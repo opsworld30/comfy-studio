@@ -18,6 +18,9 @@ import {
   Play,
   Sparkles,
   History,
+  Image as ImageIcon,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { comfyuiApi, performanceApi, smartCreateApi } from '@/lib/api'
 import { SmartCreatePanel } from '@/components/smart-create'
@@ -39,6 +42,10 @@ export default function TaskQueue() {
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   
+  // 历史记录分页
+  const [historyPage, setHistoryPage] = useState(1)
+  const HISTORY_PAGE_SIZE = 10
+  
   // 熔断器：控制轮询，防止后端离线时无限重试
   const { createRefetchInterval, shouldEnableQuery, wrapQueryFn } = useCircuitBreaker()
   
@@ -58,19 +65,10 @@ export default function TaskQueue() {
 
   // 获取 ComfyUI 历史记录（带熔断器保护）
   const { data: historyData } = useQuery({
-    queryKey: ['comfyui', 'history'],
+    queryKey: ['comfyui', 'history', 'formatted'],
     queryFn: wrapQueryFn(async () => {
-      const { data } = await comfyuiApi.getHistory()
-      // 转换为数组格式
-      if (data && typeof data === 'object') {
-        return Object.entries(data).map(([promptId, info]: [string, any]) => ({
-          prompt_id: promptId,
-          status: info.status?.completed ? 'completed' : 'running',
-          outputs: info.outputs,
-          created_at: info.status?.status_str,
-        })).slice(0, 50)
-      }
-      return []
+      const { data } = await comfyuiApi.getFormattedHistory(100)
+      return data
     }),
     enabled: activeTab === 'history' && shouldEnableQuery(),
     retry: 1,
@@ -440,7 +438,7 @@ export default function TaskQueue() {
           <SmartCreatePanel />
         </TabsContent>
 
-        {/* 任务历史 Tab */}
+        {/* ComfyUI 原生历史 Tab */}
         <TabsContent value="history" className="mt-6">
           <Card className="bg-card/50 border-border/50">
             <CardHeader>
@@ -448,29 +446,103 @@ export default function TaskQueue() {
                 <History className="h-4 w-4" />
                 ComfyUI 任务历史
               </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                显示 ComfyUI 服务器上的任务记录，包括提示词和生成结果
+              </p>
             </CardHeader>
             <CardContent>
               {historyData && historyData.length > 0 ? (
-                <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                  {historyData.slice(0, 50).map((item) => (
-                    <div key={item.prompt_id} className="p-3 bg-muted/50 rounded flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${item.status === 'completed' ? 'bg-green-500' : item.status === 'running' ? 'bg-yellow-500' : 'bg-red-500'}`} />
-                          <span className="text-sm font-mono truncate">{item.prompt_id}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {item.outputs?.images?.length || 0} 张图片
-                          {item.created_at && ` · ${new Date(item.created_at).toLocaleString()}`}
-                        </p>
+                <>
+                  <div className="space-y-3">
+                    {historyData
+                      .slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE)
+                      .map((item) => {
+                        const isCompleted = item.status === 'completed'
+                        const isRunning = item.status === 'running'
+                        
+                        return (
+                          <div key={item.prompt_id} className="p-4 bg-muted/30 rounded-lg border border-border/30">
+                            {/* 头部：状态、图片数、时间 */}
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <Badge 
+                                  variant="outline" 
+                                  className={isCompleted ? 'border-green-500/50 text-green-500' : isRunning ? 'border-yellow-500/50 text-yellow-500' : 'border-red-500/50 text-red-500'}
+                                >
+                                  {isCompleted ? (
+                                    <><CheckCircle className="h-3 w-3 mr-1" />已完成</>
+                                  ) : isRunning ? (
+                                    <><Loader2 className="h-3 w-3 mr-1 animate-spin" />运行中</>
+                                  ) : (
+                                    <><StopCircle className="h-3 w-3 mr-1" />已停止</>
+                                  )}
+                                </Badge>
+                                {item.image_count > 0 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    <ImageIcon className="h-3 w-3 mr-1" />
+                                    {item.image_count} 张图片
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span className="font-mono" title={item.prompt_id}>
+                                  {item.prompt_id.slice(0, 8)}...
+                                </span>
+                                {item.timestamp && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {new Date(item.timestamp * 1000).toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* 提示词 */}
+                            {item.positive && (
+                              <div className="mt-2">
+                                <p className="text-xs text-muted-foreground mb-1">提示词:</p>
+                                <p className="text-sm bg-muted/50 p-2 rounded text-foreground/80 line-clamp-3 break-all">
+                                  {item.positive}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                  </div>
+                  
+                  {/* 分页 */}
+                  {historyData.length > HISTORY_PAGE_SIZE && (
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">
+                      <p className="text-xs text-muted-foreground">
+                        共 {historyData.length} 条记录，第 {historyPage}/{Math.ceil(historyData.length / HISTORY_PAGE_SIZE)} 页
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                          disabled={historyPage === 1}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setHistoryPage(p => Math.min(Math.ceil(historyData.length / HISTORY_PAGE_SIZE), p + 1))}
+                          disabled={historyPage >= Math.ceil(historyData.length / HISTORY_PAGE_SIZE)}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
                   <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>暂无任务历史</p>
+                  <p>暂无 ComfyUI 任务历史</p>
+                  <p className="text-xs mt-1">当 ComfyUI 服务器执行任务后，历史记录将显示在这里</p>
                 </div>
               )}
             </CardContent>

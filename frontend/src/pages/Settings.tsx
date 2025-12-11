@@ -34,6 +34,7 @@ import { getSystemSettings, updateSystemSettings, type SystemSettings } from '@/
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useThemeStore } from '@/stores/theme'
 import { AITemplateManager } from '@/components/settings/AITemplateManager'
+import { toast } from 'sonner'
 
 export default function Settings() {
   const queryClient = useQueryClient()
@@ -107,6 +108,10 @@ export default function Settings() {
       settingsApi.updateAISettings(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai'] })
+      toast.success('AI 设置已保存')
+    },
+    onError: (error: Error) => {
+      toast.error('AI 设置保存失败: ' + error.message)
     },
   })
 
@@ -167,6 +172,10 @@ export default function Settings() {
     mutationFn: (data: Partial<SystemSettings>) => updateSystemSettings(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'system'] })
+      toast.success('系统设置已保存')
+    },
+    onError: (error: Error) => {
+      toast.error('系统设置保存失败: ' + error.message)
     },
   })
 
