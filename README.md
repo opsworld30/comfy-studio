@@ -1,254 +1,256 @@
 # ComfyUI Studio
 
-一个现代化的 ComfyUI 工作流管理系统，提供直观的 Web 界面来管理、执行和监控 ComfyUI 工作流。
+[简体中文](./README_CN.md) | English
 
-## 📸 界面预览
+A modern ComfyUI workflow management system with an intuitive web interface for managing, executing, and monitoring ComfyUI workflows.
 
-### 工作流管理
-![工作流管理](docs/images/home.png)
+## 📸 Screenshots
 
-### 智能创作与任务队列
-![任务队列](docs/images/batch.png)
+### Workflow Management
+![Workflow Management](docs/images/home.png)
 
-### 系统监控
-![系统监控](docs/images/monitor.png)
+### Smart Creation & Task Queue
+![Task Queue](docs/images/batch.png)
 
-### 画廊
-![画廊](docs/images/gallery.png)
+### System Monitor
+![System Monitor](docs/images/monitor.png)
 
-## ✨ 特性
+### Gallery
+![Gallery](docs/images/gallery.png)
 
-- 🎨 **现代化 UI** - 基于 React + TailwindCSS + shadcn/ui 构建的美观界面
-- 📊 **工作流管理** - 创建、编辑、导入和导出 ComfyUI 工作流
-- 🚀 **任务执行** - 实时执行工作流并监控进度
-- 📈 **系统监控** - GPU、CPU、内存使用情况实时监控
-- 🔄 **WebSocket 支持** - 实时任务状态更新
-- 📦 **批量处理** - 支持批量任务管理
-- 🎯 **节点可视化** - 使用 React Flow 进行工作流可视化
+## ✨ Features
 
-## 🏗️ 技术栈
+- 🎨 **Modern UI** - Beautiful interface built with React + TailwindCSS + shadcn/ui
+- 📊 **Workflow Management** - Create, edit, import and export ComfyUI workflows
+- 🚀 **Task Execution** - Execute workflows in real-time with progress monitoring
+- 📈 **System Monitoring** - Real-time GPU, CPU, and memory usage monitoring
+- 🔄 **WebSocket Support** - Real-time task status updates
+- 📦 **Batch Processing** - Support for batch task management
+- 🎯 **Node Visualization** - Workflow visualization using React Flow
 
-### 后端
-- **FastAPI** - 高性能异步 Web 框架
-- **SQLAlchemy** - ORM 数据库操作
-- **aiosqlite** - 异步 SQLite 数据库
-- **Pydantic** - 数据验证
-- **httpx** - 异步 HTTP 客户端
-- **WebSockets** - 实时通信
+## 🏗️ Tech Stack
 
-### 前端
-- **React 18** - UI 框架
-- **TypeScript** - 类型安全
-- **Vite** - 构建工具
-- **TailwindCSS** - 样式框架
-- **shadcn/ui** - UI 组件库
-- **React Query** - 数据获取和缓存
-- **React Flow** - 工作流可视化
-- **Zustand** - 状态管理
-- **Lucide React** - 图标库
+### Backend
+- **FastAPI** - High-performance async web framework
+- **SQLAlchemy** - ORM for database operations
+- **aiosqlite** - Async SQLite database
+- **Pydantic** - Data validation
+- **httpx** - Async HTTP client
+- **WebSockets** - Real-time communication
 
-## 📋 前置要求
+### Frontend
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool
+- **TailwindCSS** - Styling framework
+- **shadcn/ui** - UI component library
+- **React Query** - Data fetching and caching
+- **React Flow** - Workflow visualization
+- **Zustand** - State management
+- **Lucide React** - Icon library
+
+## 📋 Prerequisites
 
 - Python 3.12+
 - Node.js 18+
-- pnpm (推荐) 或 npm
-- ComfyUI 实例运行在 `http://127.0.0.1:8188`
+- pnpm (recommended) or npm
+- ComfyUI instance running at `http://127.0.0.1:8188`
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 1. 克隆项目
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/opsworld30/comfy-studio.git
 cd comfy-studio
 ```
 
-### 2. 后端设置
+### 2. Backend Setup
 
 ```bash
 cd backend
 
-# 使用 uv 安装依赖（推荐）
+# Install dependencies using uv (recommended)
 uv sync
 
-# 或使用 pip
+# Or use pip
 pip install -e .
 
-# 启动后端服务（配置文件可选，已有默认值）
+# Start backend server (config file is optional, defaults are provided)
 uv run python main.py
-# 或
+# Or
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-后端服务将在 `http://localhost:8000` 启动
+Backend server will start at `http://localhost:8000`
 
-### 3. 前端设置
+### 3. Frontend Setup
 
 ```bash
 cd frontend
 
-# 安装依赖
+# Install dependencies
 pnpm install
-# 或
+# Or
 npm install
 
-# 启动开发服务器
+# Start development server
 pnpm dev
-# 或
+# Or
 npm run dev
 ```
 
-前端服务将在 `http://localhost:5173` 启动
+Frontend server will start at `http://localhost:5173`
 
-## 📖 API 文档
+## 📖 API Documentation
 
-启动后端服务后，访问以下地址查看 API 文档：
+After starting the backend server, visit the following URLs to view API documentation:
 
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
-## 🔧 配置
+## 🔧 Configuration
 
-### 后端配置
+### Backend Configuration
 
-后端所有配置都有默认值，**无需创建 `.env` 文件即可运行**。
+All backend configurations have default values. **No need to create a `.env` file to run**.
 
-如需自定义配置，可创建 `backend/.env` 文件：
+To customize configuration, create a `backend/.env` file:
 
 ```env
-# ComfyUI 服务地址（默认: http://127.0.0.1:8188）
+# ComfyUI service address (default: http://127.0.0.1:8188)
 COMFYUI_URL=http://127.0.0.1:8188
 
-# 数据库配置（默认: sqlite+aiosqlite:///./data/workflows.db）
+# Database configuration (default: sqlite+aiosqlite:///./data/workflows.db)
 DATABASE_URL=sqlite+aiosqlite:///./data/workflows.db
 
-# 可选配置
+# Optional configurations
 # LOG_LEVEL=INFO
 # CORS_ORIGINS=["http://localhost:5173"]
 ```
 
-参考 `backend/.env.example` 查看所有可配置项。
+See `backend/.env.example` for all configurable options.
 
-### 前端配置
+### Frontend Configuration
 
-前端默认连接到 `http://localhost:8000` 的后端服务。如需修改，请编辑 `frontend/src/config.ts`。
+Frontend connects to backend at `http://localhost:8000` by default. To modify, edit `frontend/src/config.ts`.
 
-## 📁 项目结构
+## 📁 Project Structure
 
 ```
 comfy-studio/
-├── backend/                 # 后端服务
+├── backend/                 # Backend service
 │   ├── app/
-│   │   ├── routers/        # API 路由
-│   │   ├── services/       # 业务逻辑
-│   │   ├── middleware/     # 中间件
-│   │   ├── models.py       # 数据模型
-│   │   ├── schemas.py      # Pydantic 模式
-│   │   └── main.py         # 应用入口
-│   ├── data/               # 数据库文件
-│   ├── tests/              # 测试文件
-│   ├── pyproject.toml      # Python 项目配置
+│   │   ├── routers/        # API routes
+│   │   ├── services/       # Business logic
+│   │   ├── middleware/     # Middleware
+│   │   ├── models.py       # Data models
+│   │   ├── schemas.py      # Pydantic schemas
+│   │   └── main.py         # Application entry
+│   ├── data/               # Database files
+│   ├── tests/              # Test files
+│   ├── pyproject.toml      # Python project config
 │   └── README.md
-├── frontend/               # 前端应用
+├── frontend/               # Frontend application
 │   ├── src/
-│   │   ├── components/     # React 组件
-│   │   ├── pages/          # 页面组件
-│   │   ├── hooks/          # 自定义 Hooks
-│   │   ├── lib/            # 工具函数
-│   │   └── App.tsx         # 应用入口
+│   │   ├── components/     # React components
+│   │   ├── pages/          # Page components
+│   │   ├── hooks/          # Custom Hooks
+│   │   ├── lib/            # Utility functions
+│   │   └── App.tsx         # Application entry
 │   ├── package.json
 │   └── vite.config.ts
-└── README.md               # 项目说明
+└── README.md               # Project documentation
 ```
 
-## 🧪 测试
+## 🧪 Testing
 
-### 后端测试
+### Backend Tests
 
 ```bash
 cd backend
 uv run pytest
-# 或带覆盖率
+# With coverage
 uv run pytest --cov=app tests/
 ```
 
-### 前端测试
+### Frontend Tests
 
 ```bash
 cd frontend
 pnpm test
 ```
 
-## 🏗️ 构建生产版本
+## 🏗️ Production Build
 
-### 后端
+### Backend
 
 ```bash
 cd backend
 uv build
 ```
 
-### 前端
+### Frontend
 
 ```bash
 cd frontend
 pnpm build
 ```
 
-构建产物将在 `frontend/dist/` 目录下。
+Build artifacts will be in the `frontend/dist/` directory.
 
-## 📝 开发指南
+## 📝 Development Guide
 
-### 添加新的 API 端点
+### Adding New API Endpoints
 
-1. 在 `backend/app/routers/` 创建或编辑路由文件
-2. 在 `backend/app/services/` 添加业务逻辑
-3. 在 `backend/app/schemas.py` 定义请求/响应模式
-4. 在 `backend/app/models.py` 添加数据模型（如需要）
+1. Create or edit route files in `backend/app/routers/`
+2. Add business logic in `backend/app/services/`
+3. Define request/response schemas in `backend/app/schemas.py`
+4. Add data models in `backend/app/models.py` (if needed)
 
-### 添加新的前端页面
+### Adding New Frontend Pages
 
-1. 在 `frontend/src/pages/` 创建页面组件
-2. 在 `frontend/src/App.tsx` 添加路由
-3. 使用 React Query 进行数据获取
-4. 使用 shadcn/ui 组件构建 UI
+1. Create page components in `frontend/src/pages/`
+2. Add routes in `frontend/src/App.tsx`
+3. Use React Query for data fetching
+4. Build UI with shadcn/ui components
 
-## 🤝 贡献
+## 🤝 Contributing
 
-欢迎提交 Issue 和 Pull Request！
+Issues and Pull Requests are welcome!
 
-## 📄 许可证
+## 📄 License
 
 MIT License
 
-## 🔗 相关链接
+## 🔗 Related Links
 
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [React](https://react.dev/)
 - [shadcn/ui](https://ui.shadcn.com/)
 
-## ⚠️ 注意事项
+## ⚠️ Notes
 
-- 确保 ComfyUI 服务已启动并可访问
-- 首次运行会自动创建数据库
-- 数据库文件位于 `backend/data/workflows.db`
-- 上传的工作流文件会保存在数据库中
+- Ensure ComfyUI service is running and accessible
+- Database will be created automatically on first run
+- Database file is located at `backend/data/workflows.db`
+- Uploaded workflow files are saved in the database
 
-## 🐛 问题排查
+## 🐛 Troubleshooting
 
-### 后端无法连接到 ComfyUI
+### Backend Cannot Connect to ComfyUI
 
-检查 ComfyUI 是否运行在 `http://127.0.0.1:8188`，或修改 `.env` 中的 `COMFYUI_URL`。
+Check if ComfyUI is running at `http://127.0.0.1:8188`, or modify `COMFYUI_URL` in `.env`.
 
-### 前端无法连接到后端
+### Frontend Cannot Connect to Backend
 
-确保后端服务运行在 `http://localhost:8000`，检查 CORS 配置。
+Ensure backend service is running at `http://localhost:8000`, check CORS configuration.
 
-### 数据库错误
+### Database Errors
 
-删除 `backend/data/workflows.db` 重新初始化数据库。
+Delete `backend/data/workflows.db` to reinitialize the database.
 
-## 📧 联系方式
+## 📧 Contact
 
-如有问题或建议，请提交 Issue。
+For questions or suggestions, please submit an Issue.
