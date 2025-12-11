@@ -203,6 +203,64 @@ async def get_history(prompt_id: str = ""):
     return await comfyui_service.get_history(prompt_id)
 
 
+@router.get("/history/formatted")
+async def get_formatted_history(
+    limit: int = Query(default=50, le=200),
+):
+    """获取格式化的执行历史，包含提示词"""
+    from ..services.prompt_extractor import prompt_extractor
+    
+    history = await comfyui_service.get_history()
+    
+    result = []
+    # 按执行完成时间排序，最新的在前面
+    sorted_history = sorted(
+        history.items(),
+        key=lambda x: x[1].get("prompt", [0])[0] if isinstance(x[1].get("prompt"), list) and len(x[1].get("prompt", [])) > 0 else 0,
+        reverse=True
+    )
+    
+    for prompt_id, prompt_data in sorted_history[:limit]:
+        status_info = prompt_data.get("status", {})
+        outputs = prompt_data.get("outputs", {})
+        
+        # 提取提示词
+        positive = ""
+        negative = ""
+        
+        prompt_info = prompt_data.get("prompt", [])
+        timestamp = None
+        if isinstance(prompt_info, list) and len(prompt_info) >= 3:
+            # prompt[0] 是时间戳
+            if len(prompt_info) > 0:
+                timestamp = prompt_info[0]
+            # prompt[2] 是 workflow 数据
+            workflow_data = prompt_info[2]
+            if isinstance(workflow_data, dict):
+                extracted = prompt_extractor.extract_from_workflow(workflow_data)
+                if extracted:
+                    p = extracted[0]
+                    positive = p.positive
+                    negative = p.negative
+        
+        # 统计图片数量
+        image_count = 0
+        for node_id, node_output in outputs.items():
+            if "images" in node_output:
+                image_count += len(node_output["images"])
+        
+        result.append({
+            "prompt_id": prompt_id,
+            "status": "completed" if status_info.get("completed") else "running",
+            "timestamp": timestamp,
+            "positive": positive,
+            "negative": negative,
+            "image_count": image_count,
+        })
+    
+    return result
+
+
 @router.post("/execute/{workflow_id}", response_model=ExecutionResponse)
 async def execute_workflow(
     workflow_id: int,
