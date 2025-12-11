@@ -74,13 +74,7 @@ uv sync
 # 或使用 pip
 pip install -e .
 
-# 创建 .env 配置文件
-cat > .env << EOF
-COMFYUI_URL=http://127.0.0.1:8188
-DATABASE_URL=sqlite+aiosqlite:///./data/workflows.db
-EOF
-
-# 启动后端服务
+# 启动后端服务（配置文件可选，已有默认值）
 uv run python main.py
 # 或
 uv run uvicorn app.main:app --reload --port 8000
@@ -115,19 +109,25 @@ npm run dev
 
 ## 🔧 配置
 
-### 后端配置 (`.env`)
+### 后端配置
+
+后端所有配置都有默认值，**无需创建 `.env` 文件即可运行**。
+
+如需自定义配置，可创建 `backend/.env` 文件：
 
 ```env
-# ComfyUI 服务地址
+# ComfyUI 服务地址（默认: http://127.0.0.1:8188）
 COMFYUI_URL=http://127.0.0.1:8188
 
-# 数据库配置
+# 数据库配置（默认: sqlite+aiosqlite:///./data/workflows.db）
 DATABASE_URL=sqlite+aiosqlite:///./data/workflows.db
 
 # 可选配置
 # LOG_LEVEL=INFO
 # CORS_ORIGINS=["http://localhost:5173"]
 ```
+
+参考 `backend/.env.example` 查看所有可配置项。
 
 ### 前端配置
 
