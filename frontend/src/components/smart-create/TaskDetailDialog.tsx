@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { SmartCreateTask } from '@/lib/api'
 import { comfyuiApi, smartCreateApi } from '@/lib/api'
+import { formatDateTime } from '@/lib/utils'
 
 interface TaskDetailDialogProps {
   open: boolean
@@ -57,11 +58,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 function LazyImage({ 
   thumbnailSrc, 
   alt, 
-  onClick 
+  onClick,
+  isGenerating = false,
 }: { 
   thumbnailSrc: string; 
   alt: string;
   onClick?: () => void;
+  isGenerating?: boolean; // 任务是否正在生成中
 }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -89,6 +92,26 @@ function LazyImage({
     return () => observer.disconnect()
   }, [])
 
+  // 渲染错误/占位状态
+  const renderPlaceholder = () => {
+    if (isGenerating) {
+      // 任务生成中，显示等待占位符
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50">
+          <Loader2 className="h-8 w-8 mb-2 animate-spin text-primary/50" />
+          <span className="text-xs">生成中...</span>
+        </div>
+      )
+    }
+    // 任务已完成但加载失败
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+        <ImageOff className="h-8 w-8 mb-2" />
+        <span className="text-xs">加载失败</span>
+      </div>
+    )
+  }
+
   return (
     <div 
       ref={imgRef}
@@ -103,10 +126,7 @@ function LazyImage({
             <Skeleton className="absolute inset-0" />
           )}
           {error ? (
-            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
-              <ImageOff className="h-8 w-8 mb-2" />
-              <span className="text-xs">加载失败</span>
-            </div>
+            renderPlaceholder()
           ) : (
             <img
               src={thumbnailSrc}
@@ -182,8 +202,8 @@ export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps)
   if (!currentTask) return null
 
   const status = STATUS_CONFIG[currentTask.status] || STATUS_CONFIG.pending
-  const templateName = TEMPLATE_NAMES[task.template_type] || task.template_type
-  const styleName = STYLE_NAMES[task.style] || task.style
+  const templateName = TEMPLATE_NAMES[currentTask.template_type] || currentTask.template_type
+  const styleName = STYLE_NAMES[currentTask.style] || currentTask.style
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -206,25 +226,25 @@ export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps)
                 <h4 className="font-medium mb-3">基本信息</h4>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="text-muted-foreground">任务名称:</div>
-                  <div>{task.name}</div>
+                  <div>{currentTask.name}</div>
                   <div className="text-muted-foreground">创作模板:</div>
                   <div>{templateName}</div>
                   <div className="text-muted-foreground">画面风格:</div>
                   <div>{styleName}</div>
                   <div className="text-muted-foreground">图片尺寸:</div>
-                  <div>{task.image_size}</div>
+                  <div>{currentTask.image_size}</div>
                   <div className="text-muted-foreground">创建时间:</div>
-                  <div>{new Date(task.created_at).toLocaleString()}</div>
-                  {task.started_at && (
+                  <div>{formatDateTime(currentTask.created_at)}</div>
+                  {currentTask.started_at && (
                     <>
                       <div className="text-muted-foreground">开始时间:</div>
-                      <div>{new Date(task.started_at).toLocaleString()}</div>
+                      <div>{formatDateTime(currentTask.started_at)}</div>
                     </>
                   )}
-                  {task.completed_at && (
+                  {currentTask.completed_at && (
                     <>
                       <div className="text-muted-foreground">完成时间:</div>
-                      <div>{new Date(task.completed_at).toLocaleString()}</div>
+                      <div>{formatDateTime(currentTask.completed_at)}</div>
                     </>
                   )}
                 </div>
@@ -237,33 +257,33 @@ export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps)
                 <h4 className="font-medium mb-3">执行进度</h4>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
-                    <div className="text-2xl font-bold text-primary">{task.total_count}</div>
+                    <div className="text-2xl font-bold text-primary">{currentTask.total_count}</div>
                     <div className="text-xs text-muted-foreground">总任务数</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-green-500">{task.completed_count}</div>
+                    <div className="text-2xl font-bold text-green-500">{currentTask.completed_count}</div>
                     <div className="text-xs text-muted-foreground">已完成</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-red-500">{task.failed_count}</div>
+                    <div className="text-2xl font-bold text-red-500">{currentTask.failed_count}</div>
                     <div className="text-xs text-muted-foreground">失败</div>
                   </div>
                 </div>
-                {task.error_message && (
+                {currentTask.error_message && (
                   <div className="mt-3 p-2 bg-red-500/10 rounded text-sm text-red-400">
-                    错误: {task.error_message}
+                    错误: {currentTask.error_message}
                   </div>
                 )}
               </CardContent>
             </Card>
 
             {/* 分镜列表 */}
-            {task.analyzed_prompts && task.analyzed_prompts.length > 0 && (
+            {currentTask.analyzed_prompts && currentTask.analyzed_prompts.length > 0 && (
               <Card className="bg-card/50">
                 <CardContent className="p-4">
-                  <h4 className="font-medium mb-3">分镜列表 ({task.analyzed_prompts.length})</h4>
+                  <h4 className="font-medium mb-3">分镜列表 ({currentTask.analyzed_prompts.length})</h4>
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                    {task.analyzed_prompts.map((prompt, index) => (
+                    {currentTask.analyzed_prompts.map((prompt, index) => (
                       <details key={index} className="group">
                         <summary className="p-2 bg-muted/50 rounded text-sm cursor-pointer hover:bg-muted/70 list-none">
                           <div className="flex items-center justify-between">
@@ -298,20 +318,23 @@ export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps)
             )}
 
             {/* 生成结果 */}
-            {task.result_images && task.result_images.length > 0 && (
+            {currentTask.result_images && currentTask.result_images.length > 0 && (
               <Card className="bg-card/50">
                 <CardContent className="p-4">
                   <h4 className="font-medium mb-3 flex items-center gap-2">
                     <ImageIcon className="h-4 w-4" />
-                    生成结果 ({task.result_images.length} 张)
+                    生成结果 ({currentTask.result_images.length} 张)
                   </h4>
                   <div className="text-xs text-muted-foreground mb-2">点击图片查看原图</div>
                   <div className="grid grid-cols-4 gap-2 max-h-[400px] overflow-y-auto pr-2">
-                    {task.result_images.map((img, index) => {
+                    {currentTask.result_images.map((img, index) => {
                       // img 可能是字符串或对象
                       const imagePath = typeof img === 'string' ? img : (img as { path?: string }).path || ''
                       const fullImageUrl = comfyuiApi.getImageUrl(imagePath)
                       const thumbnailUrl = comfyuiApi.getThumbnailUrl(imagePath, '', 'output', 256)
+                      
+                      // 判断任务是否正在生成中
+                      const isTaskGenerating = currentTask.status === 'generating' || currentTask.status === 'analyzing'
                       
                       return (
                         <LazyImage
@@ -319,6 +342,7 @@ export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps)
                           thumbnailSrc={thumbnailUrl}
                           alt={`结果 ${index + 1}`}
                           onClick={() => setPreviewImage({ src: fullImageUrl, alt: `结果 ${index + 1}` })}
+                          isGenerating={isTaskGenerating}
                         />
                       )
                     })}
@@ -332,7 +356,7 @@ export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps)
               <CardContent className="p-4">
                 <h4 className="font-medium mb-3">原始输入内容</h4>
                 <div className="bg-muted/50 p-3 rounded text-sm max-h-[150px] overflow-y-auto whitespace-pre-wrap">
-                  {task.input_content}
+                  {currentTask.input_content}
                 </div>
               </CardContent>
             </Card>

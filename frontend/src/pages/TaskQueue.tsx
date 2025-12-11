@@ -49,7 +49,8 @@ export default function TaskQueue() {
       const { data } = await smartCreateApi.list({ status: 'generating', limit: 10 })
       return data
     }),
-    refetchInterval: createRefetchInterval(5000),
+    refetchInterval: createRefetchInterval(2000), // 缩短到 2 秒
+    staleTime: 1000,
     enabled: shouldEnableQuery(),
     retry: 1,
   })

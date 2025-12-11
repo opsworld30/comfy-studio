@@ -2,6 +2,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { formatDateTime } from '@/lib/utils'
 import {
   Eye,
   Pause,
@@ -118,7 +119,7 @@ export function TaskList({ tasks, onView, onPause, onResume, onStop, onDelete, o
                   )}
                   
                   <p className="text-xs text-muted-foreground mt-1">
-                    创建于 {new Date(task.created_at).toLocaleString()}
+                    创建于 {formatDateTime(task.created_at)}
                   </p>
                 </div>
                 
