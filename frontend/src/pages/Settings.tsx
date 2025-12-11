@@ -436,10 +436,10 @@ export default function Settings() {
                         { key: 'showDashboard', label: '工作流', desc: '工作流管理页面' },
                         { key: 'showBatch', label: '任务队列', desc: '批量任务管理' },
                         { key: 'showGallery', label: '画廊', desc: '图片画廊页面' },
-                        { key: 'showModels', label: '模型库', desc: '模型管理页面' },
+                        // { key: 'showModels', label: '模型库', desc: '模型管理页面' },
                         { key: 'showPrompts', label: '提示词', desc: '提示词管理页面' },
                         { key: 'showMonitor', label: '监控', desc: '系统监控页面' },
-                        { key: 'showMarket', label: '市场', desc: '工作流市场' },
+                        // { key: 'showMarket', label: '市场', desc: '工作流市场' },
                       ].map((item) => (
                         <div key={item.key} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                           <div>
@@ -511,8 +511,8 @@ export default function Settings() {
                   <AccordionContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                       {[
-                        { section: 'models', key: 'showLocalModels', label: '本地模型', desc: '本地模型管理' },
-                        { section: 'models', key: 'showCivitai', label: 'Civitai', desc: 'Civitai 模型库' },
+                        // { section: 'models', key: 'showLocalModels', label: '本地模型', desc: '本地模型管理' },
+                        // { section: 'models', key: 'showCivitai', label: 'Civitai', desc: 'Civitai 模型库' },
                         { section: 'prompts', key: 'showCategories', label: '提示词分类', desc: '分类筛选功能' },
                         { section: 'prompts', key: 'showAIGenerate', label: 'AI 生成', desc: 'AI 生成提示词' },
                       ].map((item) => (

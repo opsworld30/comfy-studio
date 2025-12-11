@@ -15,10 +15,10 @@ const defaultModules: PageModuleSettings = {
     showDashboard: true,
     showBatch: true,
     showGallery: true,
-    showModels: true,
+    showModels: false,
     showPrompts: true,
     showMonitor: true,
-    showMarket: true,
+    showMarket: false,
   },
   dashboard: {
     showQuickActions: true,
