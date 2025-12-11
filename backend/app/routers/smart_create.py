@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from ..database import get_db
-from ..models import SmartCreateTask, UserSettings
+from ..models import SmartCreateTask, UserSettings, AIPromptTemplate
 from ..services.smart_create_executor import smart_create_executor
+from .ai_templates import SYSTEM_TEMPLATES
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +318,38 @@ STYLE_MAPPING = {
 
 # ============ 辅助函数 ============
 
+async def get_template_prompt(template_type: str, db: AsyncSession) -> str:
+    """获取模板提示词（优先用户自定义，否则使用系统内置）"""
+    from sqlalchemy import and_
+    
+    # 先查找用户设置的默认模板
+    result = await db.execute(
+        select(AIPromptTemplate).where(
+            and_(
+                AIPromptTemplate.template_type == template_type,
+                AIPromptTemplate.is_default == True
+            )
+        )
+    )
+    template = result.scalar_one_or_none()
+    
+    if template:
+        logger.info(f"使用用户自定义模板: {template.name}")
+        return template.prompt_template
+    
+    # 使用系统内置模板
+    if template_type in SYSTEM_TEMPLATES:
+        logger.info(f"使用系统内置模板: {template_type}")
+        return SYSTEM_TEMPLATES[template_type]["prompt_template"]
+    
+    # 兼容旧的 TEMPLATE_PROMPTS
+    if template_type in TEMPLATE_PROMPTS:
+        logger.info(f"使用旧版模板: {template_type}")
+        return TEMPLATE_PROMPTS[template_type]
+    
+    return None
+
+
 async def get_ai_settings(db: AsyncSession) -> dict:
     """获取 AI 设置"""
     result = await db.execute(
@@ -478,8 +511,8 @@ async def analyze_content(
     if not ai_enabled or not api_key:
         raise HTTPException(status_code=400, detail="AI 功能未启用，请先在设置中配置 AI API")
     
-    # 获取模板提示词
-    template_prompt = TEMPLATE_PROMPTS.get(request.template_type)
+    # 获取模板提示词（优先用户自定义）
+    template_prompt = await get_template_prompt(request.template_type, db)
     if not template_prompt:
         raise HTTPException(status_code=400, detail=f"不支持的模板类型: {request.template_type}")
     
@@ -500,12 +533,10 @@ async def analyze_content(
     
     style_desc = STYLE_MAPPING.get(request.style, request.style)
     
-    # 构建提示词
-    prompt = template_prompt.format(
-        content=request.input_content,
-        style=style_desc,
-        target_count=target_count
-    )
+    # 构建提示词（使用 replace 避免 JSON 中的花括号与 format 冲突）
+    prompt = template_prompt.replace("{content}", request.input_content)
+    prompt = prompt.replace("{style}", style_desc)
+    prompt = prompt.replace("{target_count}", str(target_count))
     
     try:
         logger.info(f"开始 AI 分析: template={request.template_type}, target_count={target_count}, content_len={content_len}")

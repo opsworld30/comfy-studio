@@ -22,11 +22,13 @@ from .routers.builtin_workflows import router as builtin_workflows_router
 from .routers.ai_workflow import router as ai_workflow_router
 from .routers.smart_create import router as smart_create_router
 from .routers.auth import router as auth_router
-from .middleware import RateLimitMiddleware, RequestLoggerMiddleware
+from .routers.ai_templates import router as ai_templates_router
+from .middleware import RateLimitMiddleware, RequestLoggerMiddleware, SlowQueryMiddleware, set_slow_query_middleware
 from .services.cleanup import cleanup_service
 from .services.backup import backup_service
 from .services.auto_migrate import auto_migrate_service
 from .services.smart_create_executor import smart_create_executor
+from .services.task_queue import start_all_queues, stop_all_queues
 from .logging_config import setup_logging, get_logger
 
 # 配置日志系统
@@ -47,12 +49,16 @@ async def lifespan(app: FastAPI):
     await backup_service.start(interval_hours=6)
     await auto_migrate_service.start()
     
+    # 启动任务队列
+    await start_all_queues()
+    
     # 恢复中断的智能创作任务
     asyncio.create_task(smart_create_executor.recover_interrupted_tasks())
     
     yield
     
     # 关闭时清理资源
+    await stop_all_queues()
     await cleanup_service.stop()
     await backup_service.stop()
     await auto_migrate_service.stop()
@@ -80,12 +86,21 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # 请求日志中间件
 app.add_middleware(RequestLoggerMiddleware)
 
-# 速率限制中间件
+# 速率限制中间件（支持精细化控制）
 app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=120,
     requests_per_second=20,
 )
+
+# 慢查询监控中间件
+slow_query_middleware = SlowQueryMiddleware(
+    app,
+    slow_threshold_ms=1000,  # 1秒以上为慢请求
+    very_slow_threshold_ms=5000,  # 5秒以上为非常慢
+)
+set_slow_query_middleware(slow_query_middleware)
+app.add_middleware(SlowQueryMiddleware, slow_threshold_ms=1000, very_slow_threshold_ms=5000)
 
 # 注册路由
 app.include_router(auth_router, prefix="/api")
@@ -103,6 +118,7 @@ app.include_router(civitai_router, prefix="/api")
 app.include_router(builtin_workflows_router, prefix="/api")
 app.include_router(ai_workflow_router, prefix="/api")
 app.include_router(smart_create_router, prefix="/api")
+app.include_router(ai_templates_router, prefix="/api")
 app.include_router(health_router)
 
 

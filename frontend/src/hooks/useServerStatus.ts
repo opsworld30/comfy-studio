@@ -39,11 +39,14 @@ export function useServerStatus() {
       }
       return 5000 // 正常情况下每 5 秒刷新
     },
-    staleTime: 3000,
-    retry: 3, // 重试 3 次后再判定失败
-    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000), // 指数退避
+    staleTime: 2000, // 2秒内数据视为新鲜，与后端缓存同步
+    gcTime: 30000, // 缓存保留30秒
+    retry: 2, // 减少重试次数，加快失败判定
+    retryDelay: (attemptIndex) => Math.min(500 * Math.pow(2, attemptIndex), 3000), // 更快的重试
     // 熔断器打开时禁用查询
     enabled: !circuitBreaker.isOpen || canMakeRequest(),
+    // 使用上次成功的数据作为占位，避免闪烁
+    placeholderData: (previousData) => previousData,
   })
 
   // 获取性能统计

@@ -52,8 +52,12 @@ export default function Servers() {
       return data
     }),
     refetchInterval: createRefetchInterval(10000),
+    staleTime: 3000, // 3秒内数据视为新鲜，与后端缓存同步
+    gcTime: 60000, // 缓存保留60秒
     enabled: shouldEnableQuery(),
     retry: 1,
+    // 使用上次成功的数据作为占位，避免闪烁
+    placeholderData: (previousData) => previousData,
   })
 
   // 添加服务器

@@ -305,6 +305,22 @@ class User(Base):
     last_login = Column(DateTime, nullable=True)
 
 
+class AIPromptTemplate(Base):
+    """AI 提示词模板"""
+    __tablename__ = "ai_prompt_templates"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    template_type = Column(String(50), nullable=False, index=True)  # novel_storyboard, character_multiview, etc.
+    name = Column(String(255), nullable=False)  # 模板名称
+    version = Column(String(20), default="1.0")  # 版本号
+    prompt_template = Column(Text, nullable=False)  # 提示词模板内容
+    description = Column(Text, default="")  # 模板说明
+    is_default = Column(Boolean, default=False)  # 是否为当前使用的模板
+    is_system = Column(Boolean, default=False)  # 是否为系统内置模板（不可删除）
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
 class RefreshToken(Base):
     """刷新令牌模型"""
     __tablename__ = "refresh_tokens"

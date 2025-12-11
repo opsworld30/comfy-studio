@@ -21,6 +21,7 @@ from ..schemas import (
 from ..services.comfyui import comfyui_service
 from ..services.image_storage import image_storage_service
 from ..services.storage import storage_service
+from ..services.cache import cache_service
 
 # 缩略图缓存目录
 THUMBNAIL_CACHE_DIR = Path("data/thumbnails")
@@ -83,18 +84,39 @@ def _generate_thumbnail(image_data: bytes, size: int) -> bytes:
 router = APIRouter(prefix="/comfyui", tags=["comfyui"])
 
 
+# 状态缓存 TTL（秒）
+STATUS_CACHE_TTL = 2  # 2秒缓存，快速响应同时保持实时性
+
+
 @router.get("/status", response_model=ComfyUIStatus)
 async def get_status():
-    """获取 ComfyUI 状态"""
+    """获取 ComfyUI 状态（带缓存，2秒TTL）"""
+    base_url = await comfyui_service.get_base_url()
+    cache_key = f"comfyui_status:{base_url}"
+    
+    # 检查缓存
+    cached = cache_service.get(cache_key)
+    if cached is not None:
+        return ComfyUIStatus(**cached)
+    
     connected = await comfyui_service.check_connection()
     
     if not connected:
+        result = {"connected": False}
+        cache_service.set(cache_key, result, ttl=STATUS_CACHE_TTL)
         return ComfyUIStatus(connected=False)
     
     system_stats = await comfyui_service.get_system_stats()
     queue = await comfyui_service.get_queue()
     
     queue_remaining = len(queue.get("queue_running", [])) + len(queue.get("queue_pending", []))
+    
+    result = {
+        "connected": True,
+        "queue_remaining": queue_remaining,
+        "system_stats": system_stats,
+    }
+    cache_service.set(cache_key, result, ttl=STATUS_CACHE_TTL)
     
     return ComfyUIStatus(
         connected=True,
@@ -333,7 +355,7 @@ async def list_executions(
     status: str | None = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """获取执行历史列表"""
+    """获取执行历史列表（优化：批量查询工作流名称，避免 N+1）"""
     query = select(ExecutionHistory).order_by(desc(ExecutionHistory.started_at))
     
     if status:
@@ -343,25 +365,30 @@ async def list_executions(
     result = await db.execute(query)
     executions = result.scalars().all()
     
-    # 获取工作流名称
-    response = []
-    for exec in executions:
-        workflow_name = None
-        if exec.workflow_id:
-            wf_result = await db.execute(
-                select(Workflow.name).where(Workflow.id == exec.workflow_id)
-            )
-            workflow_name = wf_result.scalar_one_or_none()
-        
-        response.append(ExecutionListResponse(
+    # 批量获取所有相关的工作流 ID
+    workflow_ids = {exec.workflow_id for exec in executions if exec.workflow_id}
+    
+    # 一次性查询所有工作流名称
+    workflow_names: dict[int, str] = {}
+    if workflow_ids:
+        wf_result = await db.execute(
+            select(Workflow.id, Workflow.name).where(Workflow.id.in_(workflow_ids))
+        )
+        workflow_names = {row[0]: row[1] for row in wf_result.all()}
+    
+    # 构建响应
+    response = [
+        ExecutionListResponse(
             id=exec.id,
             workflow_id=exec.workflow_id,
             prompt_id=exec.prompt_id,
             status=exec.status,
             started_at=exec.started_at,
             completed_at=exec.completed_at,
-            workflow_name=workflow_name,
-        ))
+            workflow_name=workflow_names.get(exec.workflow_id) if exec.workflow_id else None,
+        )
+        for exec in executions
+    ]
     
     return response
 
@@ -410,63 +437,61 @@ async def get_execution_images(
 
 @router.get("/queue/detailed")
 async def get_detailed_queue(db: AsyncSession = Depends(get_db)):
-    """获取详细的队列信息，包含工作流名称"""
+    """获取详细的队列信息，包含工作流名称（优化：批量查询避免 N+1）"""
     queue = await comfyui_service.get_queue()
     
-    running = []
-    pending = []
-    
-    # 处理正在运行的任务
+    # 收集所有 prompt_id
+    all_prompt_ids = set()
     for item in queue.get("queue_running", []):
-        if len(item) >= 3:
+        if len(item) >= 2 and item[1]:
+            all_prompt_ids.add(item[1])
+    for item in queue.get("queue_pending", []):
+        if len(item) >= 2 and item[1]:
+            all_prompt_ids.add(item[1])
+    
+    # 批量查询执行记录
+    exec_map: dict[str, tuple[int | None, int | None]] = {}  # prompt_id -> (exec_id, workflow_id)
+    if all_prompt_ids:
+        exec_result = await db.execute(
+            select(ExecutionHistory.prompt_id, ExecutionHistory.id, ExecutionHistory.workflow_id)
+            .where(ExecutionHistory.prompt_id.in_(all_prompt_ids))
+        )
+        for row in exec_result.all():
+            exec_map[row[0]] = (row[1], row[2])
+    
+    # 批量查询工作流名称
+    workflow_ids = {wf_id for _, wf_id in exec_map.values() if wf_id}
+    workflow_names: dict[int, str] = {}
+    if workflow_ids:
+        wf_result = await db.execute(
+            select(Workflow.id, Workflow.name).where(Workflow.id.in_(workflow_ids))
+        )
+        workflow_names = {row[0]: row[1] for row in wf_result.all()}
+    
+    # 构建响应
+    running = []
+    for item in queue.get("queue_running", []):
+        if len(item) >= 2:
             prompt_id = item[1] if len(item) > 1 else ""
-            prompt_data = item[2] if len(item) > 2 else {}
-            
-            # 尝试从数据库找到对应的执行记录
-            workflow_name = None
-            workflow_id = None
-            if prompt_id:
-                exec_result = await db.execute(
-                    select(ExecutionHistory).where(ExecutionHistory.prompt_id == prompt_id)
-                )
-                exec_record = exec_result.scalar_one_or_none()
-                if exec_record and exec_record.workflow_id:
-                    workflow_id = exec_record.workflow_id
-                    wf_result = await db.execute(
-                        select(Workflow.name).where(Workflow.id == exec_record.workflow_id)
-                    )
-                    workflow_name = wf_result.scalar_one_or_none()
-            
+            exec_info = exec_map.get(prompt_id, (None, None))
+            workflow_id = exec_info[1]
             running.append({
                 "prompt_id": prompt_id,
                 "workflow_id": workflow_id,
-                "workflow_name": workflow_name,
+                "workflow_name": workflow_names.get(workflow_id) if workflow_id else None,
                 "number": item[0] if len(item) > 0 else 0,
             })
     
-    # 处理等待中的任务
+    pending = []
     for item in queue.get("queue_pending", []):
-        if len(item) >= 3:
+        if len(item) >= 2:
             prompt_id = item[1] if len(item) > 1 else ""
-            
-            workflow_name = None
-            workflow_id = None
-            if prompt_id:
-                exec_result = await db.execute(
-                    select(ExecutionHistory).where(ExecutionHistory.prompt_id == prompt_id)
-                )
-                exec_record = exec_result.scalar_one_or_none()
-                if exec_record and exec_record.workflow_id:
-                    workflow_id = exec_record.workflow_id
-                    wf_result = await db.execute(
-                        select(Workflow.name).where(Workflow.id == exec_record.workflow_id)
-                    )
-                    workflow_name = wf_result.scalar_one_or_none()
-            
+            exec_info = exec_map.get(prompt_id, (None, None))
+            workflow_id = exec_info[1]
             pending.append({
                 "prompt_id": prompt_id,
                 "workflow_id": workflow_id,
-                "workflow_name": workflow_name,
+                "workflow_name": workflow_names.get(workflow_id) if workflow_id else None,
                 "number": item[0] if len(item) > 0 else 0,
             })
     

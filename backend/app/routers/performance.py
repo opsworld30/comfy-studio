@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 from ..database import get_db
 from ..models import PerformanceLog, ExecutionHistory, Workflow
+from ..middleware import get_slow_query_middleware
+from ..services.task_queue import get_all_queue_stats
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 
@@ -58,8 +60,8 @@ async def get_current_performance():
     ram_used = memory.used / (1024 ** 3)  # GB
     ram_total = memory.total / (1024 ** 3)  # GB
     
-    # 磁盘
-    disk = psutil.disk_usage('/')
+    # 磁盘（预留，暂未使用）
+    # disk = psutil.disk_usage('/')
     
     # GPU 信息 (尝试使用 pynvml)
     gpu_usage = 0.0
@@ -313,7 +315,7 @@ async def get_week_stats(db: AsyncSession = Depends(get_db)):
 
 @router.get("/top-workflows")
 async def get_top_workflows(limit: int = 5, db: AsyncSession = Depends(get_db)):
-    """获取热门工作流"""
+    """获取热门工作流（优化：批量查询避免 N+1）"""
     week_start = datetime.now(timezone.utc) - timedelta(days=7)
     
     result = await db.execute(
@@ -338,15 +340,23 @@ async def get_top_workflows(limit: int = 5, db: AsyncSession = Depends(get_db)):
     
     results = result.all()
     
+    # 批量查询所有工作流信息
+    workflow_ids = [row[0] for row in results if row[0]]
+    workflow_map: dict[int, str] = {}
+    if workflow_ids:
+        wf_result = await db.execute(
+            select(Workflow.id, Workflow.name).where(Workflow.id.in_(workflow_ids))
+        )
+        workflow_map = {row[0]: row[1] for row in wf_result.all()}
+    
+    # 构建响应
     top_workflows = []
     for workflow_id, count, success_count in results:
-        wf_result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
-        workflow = wf_result.scalar_one_or_none()
-        if workflow:
+        if workflow_id in workflow_map:
             success_rate = (success_count / count * 100) if count > 0 else 0
             top_workflows.append({
-                "id": workflow.id,
-                "name": workflow.name,
+                "id": workflow_id,
+                "name": workflow_map[workflow_id],
                 "count": count,
                 "success_rate": round(success_rate, 1)
             })
@@ -391,3 +401,32 @@ async def get_alerts(db: AsyncSession = Depends(get_db)):
             })
     
     return alerts
+
+
+@router.get("/slow-queries")
+async def get_slow_queries(limit: int = 50):
+    """获取慢查询日志"""
+    middleware = get_slow_query_middleware()
+    if not middleware:
+        return {"logs": [], "message": "慢查询中间件未启用"}
+    
+    return {
+        "logs": middleware.get_slow_logs(limit),
+        "slowest_endpoints": middleware.get_slowest_endpoints(10),
+    }
+
+
+@router.get("/request-stats")
+async def get_request_stats():
+    """获取请求性能统计"""
+    middleware = get_slow_query_middleware()
+    if not middleware:
+        return {"message": "慢查询中间件未启用"}
+    
+    return middleware.get_stats()
+
+
+@router.get("/task-queues")
+async def get_task_queue_stats():
+    """获取任务队列统计"""
+    return get_all_queue_stats()

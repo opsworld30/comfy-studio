@@ -48,7 +48,9 @@ async def check_server_status(url: str, use_cache: bool = True) -> tuple[str, in
             return cached
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        # 使用更短的超时时间，加快离线检测
+        timeout = httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=3.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             # 检查系统状态
             response = await client.get(f"{url}/system_stats")
             if response.status_code == 200:

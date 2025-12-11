@@ -20,6 +20,7 @@ import {
   Brain,
   Shield,
   UserPlus,
+  FileText,
 } from 'lucide-react'
 import {
   Select,
@@ -32,6 +33,7 @@ import { settingsApi, type AppSettings, type PageModuleSettings } from '@/lib/ap
 import { getSystemSettings, updateSystemSettings, type SystemSettings } from '@/lib/api/settings'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useThemeStore } from '@/stores/theme'
+import { AITemplateManager } from '@/components/settings/AITemplateManager'
 
 export default function Settings() {
   const queryClient = useQueryClient()
@@ -204,7 +206,7 @@ export default function Settings() {
 
       {/* Tabs Layout */}
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+        <TabsList className="grid w-full grid-cols-5 lg:w-[750px]">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
             <span className="hidden sm:inline">通用</span>
@@ -216,6 +218,10 @@ export default function Settings() {
           <TabsTrigger value="ai" className="flex items-center gap-2">
             <Brain className="h-4 w-4" />
             <span className="hidden sm:inline">AI</span>
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">模板</span>
           </TabsTrigger>
           <TabsTrigger value="system" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
@@ -537,6 +543,7 @@ export default function Settings() {
 
         {/* AI 设置 */}
         <TabsContent value="ai" className="mt-6">
+          <div className="space-y-6">
           <Card className="bg-card/50 border-border/50 max-w-2xl">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -616,6 +623,13 @@ export default function Settings() {
               </Button>
             </CardContent>
           </Card>
+
+          </div>
+        </TabsContent>
+
+        {/* AI 提示词模板 */}
+        <TabsContent value="templates" className="mt-6">
+          <AITemplateManager />
         </TabsContent>
 
         {/* 系统设置 */}

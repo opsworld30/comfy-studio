@@ -36,6 +36,8 @@ class ComfyUIService:
         self._base_url_cache_time: float = 0
         self._base_url_cache_ttl = 60  # URL 缓存 60 秒
         self.client = httpx.AsyncClient(timeout=30.0)
+        # 快速连接检查客户端，用于状态检测
+        self._fast_timeout = httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=3.0)
         self._cache: dict[str, CacheEntry] = {}
         self._image_cache: dict[str, tuple[bytes, float]] = {}  # filename -> (data, timestamp)
         self._image_cache_ttl = 300  # 图片缓存 5 分钟
@@ -101,11 +103,12 @@ class ComfyUIService:
         self._cache[key] = CacheEntry(data, ttl)
     
     async def check_connection(self) -> bool:
-        """检查 ComfyUI 连接状态"""
+        """检查 ComfyUI 连接状态（使用快速超时）"""
         try:
             base_url = await self.get_base_url()
-            response = await self.client.get(f"{base_url}/system_stats")
-            return response.status_code == 200
+            async with httpx.AsyncClient(timeout=self._fast_timeout) as fast_client:
+                response = await fast_client.get(f"{base_url}/system_stats")
+                return response.status_code == 200
         except Exception:
             return False
     
