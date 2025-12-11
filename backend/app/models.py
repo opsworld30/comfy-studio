@@ -286,3 +286,35 @@ class SmartCreateTask(Base):
     created_at = Column(DateTime, default=utc_now)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+
+
+class User(Base):
+    """用户模型"""
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(100), default="")
+    is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
+    avatar = Column(Text, default="")  # 头像URL或Base64
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+    last_login = Column(DateTime, nullable=True)
+
+
+class RefreshToken(Base):
+    """刷新令牌模型"""
+    __tablename__ = "refresh_tokens"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token = Column(String(500), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    revoked = Column(Boolean, default=False)
+    
+    # 关联
+    user = relationship("User", backref="refresh_tokens")

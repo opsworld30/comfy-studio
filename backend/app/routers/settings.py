@@ -436,3 +436,55 @@ async def update_comfyui_settings(
     await db.refresh(settings)
     
     return settings.value
+
+
+# ========== 系统设置（认证相关） ==========
+
+DEFAULT_SYSTEM_SETTINGS = {
+    "allow_registration": True,  # 是否允许新用户注册
+    "site_name": "ComfyUI Studio",  # 站点名称
+}
+
+
+@router.get("/system")
+async def get_system_settings(db: AsyncSession = Depends(get_db)):
+    """获取系统设置（公开接口，无需认证）"""
+    result = await db.execute(
+        select(UserSettings).where(UserSettings.key == "system_settings")
+    )
+    settings = result.scalar_one_or_none()
+    
+    if settings:
+        return {**DEFAULT_SYSTEM_SETTINGS, **settings.value}
+    
+    return DEFAULT_SYSTEM_SETTINGS
+
+
+@router.put("/system")
+async def update_system_settings(
+    settings_data: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """更新系统设置（需要管理员权限）"""
+    # TODO: 添加管理员权限检查
+    result = await db.execute(
+        select(UserSettings).where(UserSettings.key == "system_settings")
+    )
+    settings = result.scalar_one_or_none()
+    
+    # 只保留允许的字段
+    value = {
+        "allow_registration": settings_data.get("allow_registration", DEFAULT_SYSTEM_SETTINGS["allow_registration"]),
+        "site_name": settings_data.get("site_name", DEFAULT_SYSTEM_SETTINGS["site_name"]),
+    }
+    
+    if settings:
+        settings.value = value
+    else:
+        settings = UserSettings(key="system_settings", value=value)
+        db.add(settings)
+    
+    await db.commit()
+    await db.refresh(settings)
+    
+    return settings.value

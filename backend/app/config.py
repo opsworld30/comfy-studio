@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # 备份目录
     BACKUP_DIR: str = "./data/backups"
     
+    # JWT 认证配置
+    SECRET_KEY: str = "your-secret-key-change-in-production-min-32-chars"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173", 

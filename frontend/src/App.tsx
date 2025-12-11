@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import Layout from '@/components/layout/Layout'
 import { Toaster } from '@/components/ui/sonner'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useServerStatus } from '@/hooks/useServerStatus'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -18,6 +19,9 @@ import Market from '@/pages/Market'
 import Servers from '@/pages/Servers'
 import Settings from '@/pages/Settings'
 import WorkflowEditor from '@/pages/WorkflowEditor'
+import Login from '@/pages/Login'
+import Register from '@/pages/Register'
+import Profile from '@/pages/Profile'
 
 // 应用初始化组件
 function AppInitializer({ children }: { children: React.ReactNode }) {
@@ -76,7 +80,12 @@ function App() {
     <ErrorBoundary>
       <AppInitializer>
         <Routes>
-          <Route path="/" element={<Layout />}>
+          {/* 公开路由 */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          
+          {/* 受保护的路由 */}
+          <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="batch" element={<TaskQueue />} />
             <Route path="gallery" element={<Gallery />} />
@@ -86,6 +95,7 @@ function App() {
             <Route path="market" element={<Market />} />
             <Route path="servers" element={<Servers />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="profile" element={<Profile />} />
             <Route path="workflow/:id" element={<WorkflowEditor />} />
           </Route>
         </Routes>

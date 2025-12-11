@@ -21,6 +21,7 @@ from .routers.civitai import router as civitai_router
 from .routers.builtin_workflows import router as builtin_workflows_router
 from .routers.ai_workflow import router as ai_workflow_router
 from .routers.smart_create import router as smart_create_router
+from .routers.auth import router as auth_router
 from .middleware import RateLimitMiddleware, RequestLoggerMiddleware
 from .services.cleanup import cleanup_service
 from .services.backup import backup_service
@@ -87,6 +88,7 @@ app.add_middleware(
 )
 
 # 注册路由
+app.include_router(auth_router, prefix="/api")
 app.include_router(workflows_router, prefix="/api")
 app.include_router(comfyui_router, prefix="/api")
 app.include_router(templates_router, prefix="/api")

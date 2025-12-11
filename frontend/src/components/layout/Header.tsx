@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { useThemeStore } from '@/stores/theme'
+import { useAuthStore } from '@/stores/auth'
 import { useCircuitBreaker } from '@/hooks/useCircuitBreaker'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,14 +20,31 @@ import {
   User,
   Cpu,
   WifiOff,
+  LogOut,
+  Settings,
+  HelpCircle,
+  Info,
 } from 'lucide-react'
 import { comfyuiApi, batchApi } from '@/lib/api'
+import { toast } from 'sonner'
 
 export default function Header() {
+  const navigate = useNavigate()
   const { theme, setTheme } = useThemeStore()
+  const { user, logout } = useAuthStore()
   
   // 熔断器：控制轮询，防止后端离线时无限重试
   const { createRefetchInterval, shouldEnableQuery, wrapQueryFn } = useCircuitBreaker()
+  
+  const handleLogout = async () => {
+    try {
+      await logout()
+      toast.success('已退出登录')
+      navigate('/login')
+    } catch (error) {
+      toast.error('退出登录失败')
+    }
+  }
 
   // 获取 ComfyUI 状态（带熔断器保护）
   const { data: status } = useQuery({
@@ -163,12 +182,31 @@ export default function Header() {
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>我的账户</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none">{user?.full_name || user?.username}</p>
+                <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+              </div>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer">个人设置</DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer">帮助文档</DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer">关于</DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/profile')}>
+              <Settings className="mr-2 h-4 w-4" />
+              个人设置
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer">
+              <HelpCircle className="mr-2 h-4 w-4" />
+              帮助文档
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer">
+              <Info className="mr-2 h-4 w-4" />
+              关于
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer text-destructive" onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              退出登录
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
