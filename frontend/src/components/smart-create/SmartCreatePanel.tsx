@@ -35,13 +35,14 @@ export function SmartCreatePanel() {
   })
 
   // 获取任务列表（带熔断器保护）
-  const { data: tasks, refetch: refetchTasks } = useQuery({
+  const { data: tasks = [], refetch: refetchTasks } = useQuery({
     queryKey: ['smart-create', 'tasks'],
     queryFn: wrapQueryFn(async () => {
       const { data } = await smartCreateApi.list({ limit: 20 })
       return data
     }),
-    refetchInterval: createRefetchInterval(5000),
+    refetchInterval: createRefetchInterval(2000), // 缩短到 2 秒，加快任务状态更新
+    staleTime: 1000, // 1秒内数据视为新鲜
     enabled: shouldEnableQuery(),
     retry: 1,
   })

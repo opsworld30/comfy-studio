@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Dialog,
   DialogContent,
@@ -18,7 +19,7 @@ import {
   ImageOff
 } from 'lucide-react'
 import type { SmartCreateTask } from '@/lib/api'
-import { comfyuiApi } from '@/lib/api'
+import { comfyuiApi, smartCreateApi } from '@/lib/api'
 
 interface TaskDetailDialogProps {
   open: boolean
@@ -155,9 +156,32 @@ function ImagePreviewDialog({
 export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps) {
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   
-  if (!task) return null
+  // 实时查询任务详情，当任务正在执行时每 1.5 秒刷新
+  const { data: liveTask } = useQuery({
+    queryKey: ['smart-create', 'task', task?.id],
+    queryFn: async () => {
+      if (!task?.id) return null
+      const { data } = await smartCreateApi.get(task.id)
+      return data
+    },
+    enabled: open && !!task?.id,
+    refetchInterval: (query) => {
+      const currentTask = query.state.data
+      // 只有在任务正在执行时才快速轮询
+      if (currentTask?.status === 'generating' || currentTask?.status === 'analyzing') {
+        return 1500 // 1.5 秒刷新
+      }
+      return false // 完成或失败后停止轮询
+    },
+    staleTime: 1000,
+  })
+  
+  // 使用实时数据或传入的任务数据
+  const currentTask = liveTask || task
+  
+  if (!currentTask) return null
 
-  const status = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending
+  const status = STATUS_CONFIG[currentTask.status] || STATUS_CONFIG.pending
   const templateName = TEMPLATE_NAMES[task.template_type] || task.template_type
   const styleName = STYLE_NAMES[task.style] || task.style
 
