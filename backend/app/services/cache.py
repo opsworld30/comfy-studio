@@ -1,9 +1,21 @@
-"""统一缓存服务"""
+"""统一缓存服务
+
+提供内存缓存功能，支持：
+- TTL 过期
+- 手动失效
+- 按前缀失效
+- 异步锁防止缓存击穿
+- LRU 淘汰策略
+- 缓存装饰器
+- 响应缓存中间件
+"""
 import asyncio
 import time
 import logging
+import hashlib
 from typing import Any, Callable, TypeVar
 from functools import wraps
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +48,19 @@ class CacheService:
     - 手动失效
     - 按前缀失效
     - 异步锁防止缓存击穿
+    - LRU 淘汰策略
+    - 命中率统计
     """
 
-    def __init__(self):
-        self._cache: dict[str, CacheEntry] = {}
+    def __init__(self, max_size: int = 1000):
+        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._locks: dict[str, asyncio.Lock] = {}
         self._cleanup_interval = 60  # 清理间隔（秒）
         self._last_cleanup = time.time()
+        self._max_size = max_size
+        # 统计信息
+        self._hits = 0
+        self._misses = 0
 
     def _maybe_cleanup(self):
         """定期清理过期缓存"""
@@ -65,12 +83,25 @@ class CacheService:
         self._maybe_cleanup()
         entry = self._cache.get(key)
         if entry and not entry.is_expired():
+            # LRU: 移动到末尾
+            self._cache.move_to_end(key)
+            self._hits += 1
             return entry.data
+        self._misses += 1
         return None
 
     def set(self, key: str, data: Any, ttl: int = 60):
         """设置缓存"""
+        # LRU 淘汰
+        while len(self._cache) >= self._max_size:
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
+            if oldest_key in self._locks:
+                del self._locks[oldest_key]
+            logger.debug("LRU evicted cache entry: %s", oldest_key)
+        
         self._cache[key] = CacheEntry(data, ttl)
+        self._cache.move_to_end(key)
 
     def delete(self, key: str):
         """删除缓存"""
@@ -152,15 +183,34 @@ class CacheService:
         """获取缓存统计信息"""
         total = len(self._cache)
         expired = sum(1 for v in self._cache.values() if v.is_expired())
+        total_requests = self._hits + self._misses
+        hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0
+        
+        # 按前缀统计
+        prefix_stats = {}
+        for key in self._cache.keys():
+            prefix = key.split(":")[0] if ":" in key else "other"
+            prefix_stats[prefix] = prefix_stats.get(prefix, 0) + 1
+        
         return {
             "total_entries": total,
             "active_entries": total - expired,
             "expired_entries": expired,
+            "max_size": self._max_size,
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate": f"{hit_rate:.1f}%",
+            "prefix_stats": prefix_stats,
         }
+    
+    def reset_stats(self):
+        """重置统计信息"""
+        self._hits = 0
+        self._misses = 0
 
 
 # 全局缓存实例
-cache_service = CacheService()
+cache_service = CacheService(max_size=2000)
 
 
 # 缓存装饰器
@@ -191,3 +241,53 @@ def cached(key_prefix: str, ttl: int = 60, stale_ttl: int = 0):
             )
         return wrapper
     return decorator
+
+
+def cached_sync(key_prefix: str, ttl: int = 60):
+    """同步函数缓存装饰器
+
+    Args:
+        key_prefix: 缓存键前缀
+        ttl: 缓存时间（秒）
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # 生成缓存键
+            key_parts = [key_prefix]
+            if args:
+                key_parts.extend(str(a) for a in args)
+            if kwargs:
+                key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
+            cache_key = ":".join(key_parts)
+
+            # 检查缓存
+            cached_value = cache_service.get(cache_key)
+            if cached_value is not None:
+                return cached_value
+            
+            # 执行函数
+            result = func(*args, **kwargs)
+            cache_service.set(cache_key, result, ttl)
+            return result
+        return wrapper
+    return decorator
+
+
+def make_cache_key(*args, **kwargs) -> str:
+    """生成缓存键"""
+    key_parts = [str(a) for a in args]
+    key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
+    return ":".join(key_parts)
+
+
+def hash_cache_key(data: str) -> str:
+    """对长字符串生成哈希缓存键"""
+    return hashlib.md5(data.encode()).hexdigest()
+
+
+# ========== 常用缓存 TTL 常量 ==========
+CACHE_TTL_SHORT = 10       # 10秒，用于频繁变化的数据
+CACHE_TTL_MEDIUM = 60      # 1分钟，用于一般数据
+CACHE_TTL_LONG = 300       # 5分钟，用于较稳定的数据
+CACHE_TTL_VERY_LONG = 3600 # 1小时，用于很少变化的数据

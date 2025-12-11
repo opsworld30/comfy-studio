@@ -8,10 +8,14 @@ from ..database import get_db
 from ..models import UserSettings
 from ..schemas import PageModuleSettings, AISettings, PromptOptimizeRequest, PromptOptimizeResponse
 from ..services.ai import ai_service
+from ..services.cache import cache_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+# 缓存键前缀
+CACHE_PREFIX_SETTINGS = "settings"
 
 
 # ========== 通用应用设置 ==========
@@ -31,16 +35,24 @@ DEFAULT_APP_SETTINGS = {
 
 @router.get("")
 async def get_app_settings(db: AsyncSession = Depends(get_db)):
-    """获取应用设置"""
+    """获取应用设置（带缓存）"""
+    cache_key = f"{CACHE_PREFIX_SETTINGS}:app"
+    cached = cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+    
     result = await db.execute(
         select(UserSettings).where(UserSettings.key == "app_settings")
     )
     settings = result.scalar_one_or_none()
     
     if settings:
-        return {**DEFAULT_APP_SETTINGS, **settings.value}
+        result_data = {**DEFAULT_APP_SETTINGS, **settings.value}
+    else:
+        result_data = DEFAULT_APP_SETTINGS
     
-    return DEFAULT_APP_SETTINGS
+    cache_service.set(cache_key, result_data, ttl=60)
+    return result_data
 
 
 @router.put("")
@@ -69,12 +81,20 @@ async def update_app_settings(
     await db.commit()
     await db.refresh(settings)
     
+    # 失效缓存
+    cache_service.delete(f"{CACHE_PREFIX_SETTINGS}:app")
+    
     return settings.value
 
 
 @router.get("/storage")
 async def get_storage_stats(db: AsyncSession = Depends(get_db)):
-    """获取存储统计"""
+    """获取存储统计（带缓存，30秒TTL）"""
+    cache_key = f"{CACHE_PREFIX_SETTINGS}:storage"
+    cached = cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+    
     from pathlib import Path
     from sqlalchemy import func
     from ..models import StoredImage
@@ -107,7 +127,7 @@ async def get_storage_stats(db: AsyncSession = Depends(get_db)):
     # 块存储文件实际大小
     block_storage_size = get_dir_size(images_dir)
     
-    return {
+    stats = {
         "images_size": block_storage_size,  # 块存储实际占用
         "images_count": images_count,  # 数据库中的图片数量
         "images_db_size": images_size,  # 数据库记录的图片总大小
@@ -119,6 +139,9 @@ async def get_storage_stats(db: AsyncSession = Depends(get_db)):
         "backup_count": get_file_count(backups_dir),
         "total_size": get_dir_size(data_dir),
     }
+    
+    cache_service.set(cache_key, stats, ttl=30)
+    return stats
 
 
 @router.post("/cleanup/temp")

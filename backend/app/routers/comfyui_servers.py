@@ -15,7 +15,9 @@ from ..services.cache import cache_service
 router = APIRouter(prefix="/comfyui-servers", tags=["comfyui-servers"])
 
 # 服务器状态缓存TTL（秒）
-SERVER_STATUS_CACHE_TTL = 30
+# 在线状态缓存较短，离线/错误状态缓存更短以便快速检测恢复
+SERVER_STATUS_CACHE_TTL_ONLINE = 5   # 在线时5秒缓存
+SERVER_STATUS_CACHE_TTL_OFFLINE = 3  # 离线/错误时3秒缓存
 
 
 class ServerWithStatus(BaseModel):
@@ -68,18 +70,18 @@ async def check_server_status(url: str, use_cache: bool = True) -> tuple[str, in
                     queue_size = len(queue_data.get("queue_running", [])) + len(queue_data.get("queue_pending", []))
 
                 result = ("online", queue_size, gpu_info)
-                cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL)
+                cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL_ONLINE)
                 return result
             result = ("error", 0, None)
-            cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL)
+            cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL_OFFLINE)
             return result
     except httpx.TimeoutException:
         result = ("offline", 0, None)
-        cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL)
+        cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL_OFFLINE)
         return result
     except Exception:
         result = ("error", 0, None)
-        cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL)
+        cache_service.set(cache_key, result, ttl=SERVER_STATUS_CACHE_TTL_OFFLINE)
         return result
 
 

@@ -14,8 +14,19 @@ from ..services.comfyui import comfyui_service
 from ..services.image_storage import image_storage_service
 from ..services.prompt_crawler import prompt_crawler
 from ..services.ai import ai_service
+from ..services.cache import cache_service
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
+
+# 缓存键前缀
+CACHE_PREFIX_PROMPTS = "prompts"
+CACHE_PREFIX_PROMPT_CATEGORIES = "prompt_categories"
+
+
+def invalidate_prompt_cache():
+    """失效提示词相关缓存"""
+    cache_service.delete_prefix(CACHE_PREFIX_PROMPTS)
+    cache_service.delete_prefix(CACHE_PREFIX_PROMPT_CATEGORIES)
 
 
 # Pydantic 模型
@@ -117,14 +128,22 @@ async def list_prompts(
 
 @router.get("/categories")
 async def get_categories(db: AsyncSession = Depends(get_db)) -> list[dict]:
-    """获取所有分类及数量"""
+    """获取所有分类及数量（带缓存）"""
+    cache_key = CACHE_PREFIX_PROMPT_CATEGORIES
+    cached = cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+    
     query = select(
         SavedPrompt.category,
         func.count(SavedPrompt.id).label("count")
     ).group_by(SavedPrompt.category)
     
     result = await db.execute(query)
-    return [{"category": row[0], "count": row[1]} for row in result.all()]
+    categories = [{"category": row[0], "count": row[1]} for row in result.all()]
+    
+    cache_service.set(cache_key, categories, ttl=60)
+    return categories
 
 
 @router.get("/{prompt_id}", response_model=PromptResponse)
@@ -153,6 +172,10 @@ async def create_prompt(data: PromptCreate, db: AsyncSession = Depends(get_db)):
     db.add(prompt)
     await db.commit()
     await db.refresh(prompt)
+    
+    # 失效缓存
+    invalidate_prompt_cache()
+    
     return prompt
 
 
@@ -200,6 +223,10 @@ async def delete_prompt(prompt_id: int, db: AsyncSession = Depends(get_db)):
     
     await db.delete(prompt)
     await db.commit()
+    
+    # 失效缓存
+    invalidate_prompt_cache()
+    
     return {"message": "删除成功"}
 
 

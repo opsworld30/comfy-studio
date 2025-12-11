@@ -13,8 +13,22 @@ from ..schemas import (
     WorkflowListResponse, BackupCreate, BackupResponse,
     ExportData, ImportResult
 )
+from ..services.cache import cache_service
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
+
+# 缓存键前缀
+CACHE_PREFIX_WORKFLOW = "workflow"
+CACHE_PREFIX_WORKFLOW_LIST = "workflow_list"
+CACHE_PREFIX_CATEGORIES = "workflow_categories"
+
+
+def invalidate_workflow_cache(workflow_id: int | None = None):
+    """失效工作流相关缓存"""
+    cache_service.delete_prefix(CACHE_PREFIX_WORKFLOW_LIST)
+    cache_service.delete_prefix(CACHE_PREFIX_CATEGORIES)
+    if workflow_id:
+        cache_service.delete(f"{CACHE_PREFIX_WORKFLOW}:{workflow_id}")
 
 
 @router.get("", response_model=list[WorkflowListResponse])
@@ -24,19 +38,31 @@ async def list_workflows(
     favorite_only: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
-    """获取工作流列表"""
+    """获取工作流列表（带缓存）"""
+    # 只对无搜索条件的请求使用缓存
+    if not search:
+        cache_key = f"{CACHE_PREFIX_WORKFLOW_LIST}:{category or 'all'}:{favorite_only}"
+        cached = cache_service.get(cache_key)
+        if cached is not None:
+            return cached
+    
     query = select(Workflow)
     
     if category:
         query = query.where(Workflow.category == category)
     if favorite_only:
-        query = query.where(Workflow.is_favorite == True)
+        query = query.where(Workflow.is_favorite.is_(True))
     if search:
         query = query.where(Workflow.name.ilike(f"%{search}%"))
     
     query = query.order_by(Workflow.updated_at.desc())
     result = await db.execute(query)
     workflows = result.scalars().all()
+    
+    # 缓存结果（无搜索条件时）
+    if not search:
+        cache_service.set(cache_key, workflows, ttl=30)  # 30秒缓存
+    
     return workflows
 
 
@@ -58,26 +84,46 @@ async def create_workflow(
     db.add(db_workflow)
     await db.commit()
     await db.refresh(db_workflow)
+    
+    # 失效缓存
+    invalidate_workflow_cache()
+    
     return db_workflow
 
 
 @router.get("/default/current", response_model=WorkflowListResponse | None)
 async def get_default_workflow(db: AsyncSession = Depends(get_db)):
-    """获取默认工作流"""
+    """获取默认工作流（带缓存）"""
+    cache_key = f"{CACHE_PREFIX_WORKFLOW}:default"
+    cached = cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+    
     result = await db.execute(
-        select(Workflow).where(Workflow.is_default == True)
+        select(Workflow).where(Workflow.is_default.is_(True))
     )
     workflow = result.scalar_one_or_none()
+    
+    if workflow:
+        cache_service.set(cache_key, workflow, ttl=60)
+    
     return workflow
 
 
 @router.get("/categories/list")
 async def list_categories(db: AsyncSession = Depends(get_db)):
-    """获取所有分类"""
+    """获取所有分类（带缓存）"""
+    cache_key = CACHE_PREFIX_CATEGORIES
+    cached = cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+    
     result = await db.execute(
         select(Workflow.category).distinct()
     )
     categories = [row[0] for row in result.fetchall()]
+    
+    cache_service.set(cache_key, categories, ttl=60)
     return categories
 
 
@@ -200,6 +246,10 @@ async def update_workflow(
     workflow.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(workflow)
+    
+    # 失效缓存
+    invalidate_workflow_cache(workflow_id)
+    
     return workflow
 
 
@@ -222,6 +272,10 @@ async def delete_workflow(
     )
     await db.delete(workflow)
     await db.commit()
+    
+    # 失效缓存
+    invalidate_workflow_cache(workflow_id)
+    
     return {"message": "删除成功"}
 
 
