@@ -322,7 +322,10 @@ class SmartCreateExecutor:
                             workflow_data,
                             image_size,
                             seed,
-                            comfyui_url
+                            comfyui_url,
+                            task_id=task_id,
+                            prompt_index=job.prompt_index,
+                            image_index=job.image_index
                         )
 
                         prompt_id = await self._queue_prompt(comfy_prompt, comfyui_url)
@@ -807,10 +810,15 @@ class SmartCreateExecutor:
         workflow_data: Optional[dict],
         image_size: str,
         seed: Optional[int],
-        comfyui_url: str
+        comfyui_url: str,
+        task_id: int = 0,
+        prompt_index: int = 0,
+        image_index: int = 0
     ) -> dict:
         """构建 ComfyUI prompt"""
         width, height = map(int, image_size.split('x'))
+        # 为每个任务生成唯一的文件名前缀，避免不同任务图片文件名冲突
+        unique_prefix = f"SC_{task_id}_{prompt_index}_{image_index}"
 
         if workflow_data:
             prompt = json.loads(json.dumps(workflow_data))
@@ -848,9 +856,13 @@ class SmartCreateExecutor:
                     if class_type == "KSampler" and seed is not None:
                         inputs["seed"] = seed
 
+                    # 为 SaveImage 节点设置唯一的文件名前缀
+                    if class_type == "SaveImage":
+                        inputs["filename_prefix"] = unique_prefix
+
             return prompt
 
-        return await self._build_default_prompt(prompt_data, width, height, seed, comfyui_url)
+        return await self._build_default_prompt(prompt_data, width, height, seed, comfyui_url, unique_prefix)
 
     async def _build_default_prompt(
         self,
@@ -858,7 +870,8 @@ class SmartCreateExecutor:
         width: int,
         height: int,
         seed: Optional[int],
-        comfyui_url: str
+        comfyui_url: str,
+        unique_prefix: str = "SmartCreate"
     ) -> dict:
         """构建默认的简单工作流"""
         checkpoint = await self._get_default_checkpoint(comfyui_url)
@@ -916,7 +929,7 @@ class SmartCreateExecutor:
             "9": {
                 "class_type": "SaveImage",
                 "inputs": {
-                    "filename_prefix": "SmartCreate",
+                    "filename_prefix": unique_prefix,
                     "images": ["8", 0]
                 }
             }
@@ -1081,7 +1094,10 @@ class SmartCreateExecutor:
                             workflow_data,
                             task.image_size,
                             seed,
-                            comfyui_url
+                            comfyui_url,
+                            task_id=task_id,
+                            prompt_index=prompt_index,
+                            image_index=image_index
                         )
 
                         prompt_id = await self._queue_prompt(comfy_prompt, comfyui_url)

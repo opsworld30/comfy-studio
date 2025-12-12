@@ -16,6 +16,69 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai-templates", tags=["ai-templates"])
 
 
+# ============ 风格映射 ============
+
+STYLE_MAPPING = {
+    # 基础风格
+    "realistic": "photorealistic, ultra realistic, 8k uhd, high detail, professional photography",
+    "anime": "anime style, anime artwork, vibrant colors, clean lines, anime key visual",
+    "manga": "manga style, black and white, screentone, ink drawing, japanese comic style",
+
+    # 特定风格
+    "cyberpunk": "cyberpunk style, neon lights, futuristic city, dark atmosphere, sci-fi, cyber aesthetic",
+    "fantasy": "fantasy art style, epic fantasy, magical atmosphere, detailed illustration, ethereal",
+    "watercolor": "watercolor painting, soft colors, artistic, traditional media style, fluid",
+    "oil_painting": "oil painting style, classical art, rich colors, painterly, fine art, textured",
+    "comic": "western comic style, bold outlines, dynamic, superhero comic art, cel shaded",
+
+    # 动漫特定风格
+    "ghibli": "studio ghibli style, hayao miyazaki style, soft lighting, whimsical, anime movie quality",
+    "makoto_shinkai": "makoto shinkai style, beautiful sky, detailed background, lighting effects, your name style",
+    "kyoani": "kyoto animation style, detailed eyes, soft shading, slice of life, beautiful",
+
+    # 其他
+    "pixel": "pixel art style, retro game, 16-bit, nostalgic, pixelated",
+    "3d_render": "3d render, octane render, unreal engine, high quality 3d, realistic lighting",
+    "sketch": "pencil sketch, line art, hand drawn, artistic sketch, detailed linework",
+}
+
+
+# 风格中文名映射
+STYLE_NAMES = {
+    "realistic": "写实风格",
+    "anime": "日系动漫",
+    "manga": "黑白漫画",
+    "cyberpunk": "赛博朋克",
+    "fantasy": "奇幻风格",
+    "watercolor": "水彩风格",
+    "oil_painting": "油画风格",
+    "comic": "美式漫画",
+    "ghibli": "吉卜力风格",
+    "makoto_shinkai": "新海诚风格",
+    "kyoani": "京阿尼风格",
+    "pixel": "像素风格",
+    "3d_render": "3D渲染",
+    "sketch": "素描风格",
+}
+
+
+def get_style_description(style_key: str) -> str:
+    """获取风格描述"""
+    return STYLE_MAPPING.get(style_key, style_key)
+
+
+def list_styles() -> list:
+    """获取所有可用风格列表"""
+    return [
+        {
+            "id": key,
+            "name": STYLE_NAMES.get(key, key),
+            "description": desc
+        }
+        for key, desc in STYLE_MAPPING.items()
+    ]
+
+
 # ============ 数据模型 ============
 
 class TemplateCreate(BaseModel):
@@ -58,14 +121,15 @@ class TemplateResponse(BaseModel):
 
 SYSTEM_TEMPLATES = {
     "novel_storyboard": {
-        "name": "小说分镜 - 默认模版",
-        "description": "适用于小说文本转分镜画面，支持角色锁定和结构化输出",
+        "name": "小说分镜画面",
+        "description": "分析小说生成连续分镜，支持知名IP角色识别",
         "prompt_template": '''你是专业的小说分镜分析师和AI绘画提示词专家。
 
-## 核心任务
-1. 提取并固定所有角色的视觉特征
-2. 将小说拆分为 {target_count} 个关键分镜
-3. 为每个分镜生成高质量、一致的 AI 绘画提示词
+## 任务流程
+1. **角色分析** - 识别所有角色，判断是否为知名IP角色
+2. **建立档案** - 为每个角色建立固定的视觉标签
+3. **分镜拆分** - 将小说拆分为 {target_count} 个关键场景
+4. **提示词生成** - 生成一致的高质量绘画提示词
 
 ## 小说内容
 {content}
@@ -75,50 +139,90 @@ SYSTEM_TEMPLATES = {
 
 ---
 
-## 第一步：角色档案建立
+## 🔴 重要规则：知名IP角色识别
 
-分析小说中的角色，为每个角色建立【固定不变】的视觉档案。
+### 什么是知名IP角色？
+来自以下领域的广为人知的虚构角色：
+- 美漫：Marvel（蜘蛛侠、钢铁侠、美队等）、DC（超人、蝙蝠侠、神奇女侠等）
+- 日漫：火影、海贼王、龙珠、进击的巨人、鬼灭之刃、咒术回战等
+- 游戏：塞尔达、马里奥、原神、英雄联盟、最终幻想等
+- 动画电影：迪士尼、皮克斯、吉卜力等
+- 虚拟歌手：初音未来、洛天依等
+- 其他知名IP：哈利波特、指环王等
 
-角色描述必须具体化，禁止使用的词汇：
-❌ 美丽的、帅气的、可爱的、迷人的（太抽象）
-✅ 改为具体特征：oval face, sharp jawline, big eyes, small nose
+### 知名角色处理方式（极其重要！）
 
-必须包含的特征维度：
-- hair: 发型+发色+长度（如 long straight black hair, short messy brown hair）
-- eyes: 眼睛颜色+形状（如 blue eyes, narrow brown eyes）
-- face: 脸型特征（如 oval face, round face with freckles）
-- body: 体型（如 slim, athletic, petite, tall and muscular）
-- skin: 肤色（如 fair skin, tan skin, pale skin）
-- age: 年龄外观（如 young woman in 20s, middle-aged man）
-- outfit: 默认服装（如 white blouse and black skirt, casual hoodie and jeans）
+**核心原则**：知名角色必须使用「角色英文名 + IP来源」作为标签，这样AI绘画模型才能正确识别！
+
+```
+✅ 正确做法：
+   character_tag: "Spider-Man, Peter Parker, Marvel"
+   full_tags: "Spider-Man, Peter Parker, Marvel, red and blue spider suit, web pattern, white eye lenses on mask, athletic build"
+
+❌ 错误做法：
+   character_tag: ""
+   full_tags: "young man, red and blue suit, wearing mask"
+   （这样生成的只是普通人穿类似衣服，不是蜘蛛侠！）
+```
+
+### 知名角色标签构成
+1. **角色英文名**：Spider-Man, Superman, Naruto Uzumaki（必须！）
+2. **IP来源**：Marvel, DC Comics, naruto series（必须！）
+3. **标志性特征**：该角色最具辨识度的外观特点
+4. **标志性服装**：该角色的经典服装
+
+### 常见角色示例（供参考，不限于此）
+
+| 角色 | character_tag | 标志性特征 |
+|------|---------------|-----------|
+| 超人 | Superman, Clark Kent, DC Comics | 蓝色紧身衣, 红色披风, 胸口S标志 |
+| 蝙蝠侠 | Batman, Bruce Wayne, DC Comics | 黑色蝙蝠战衣, 蝙蝠头罩, 黑色披风 |
+| 蜘蛛侠 | Spider-Man, Peter Parker, Marvel | 红蓝蜘蛛服, 蛛网纹理, 白色大眼面罩 |
+| 钢铁侠 | Iron Man, Tony Stark, Marvel | 红金色机甲, 胸口弧反应堆发光 |
+| 美国队长 | Captain America, Steve Rogers, Marvel | 蓝色战服, 星形盾牌, 头盔带A |
+| 初音未来 | Hatsune Miku, vocaloid | 蓝绿色超长双马尾, 黑灰色无袖服, 01耳机 |
+| 鸣人 | Naruto Uzumaki, naruto series | 金色刺猬头, 脸上三道胡须印记, 橙色忍者服 |
+| 路飞 | Monkey D. Luffy, one piece | 黑色乱发, 草帽, 左眼下疤痕, 红色背心 |
+| 悟空 | Son Goku, dragon ball, saiyan | 黑色刺猬头(超赛金发), 橙色道服 |
+| 艾莎 | Elsa, Frozen, Disney | 铂金色编发, 蓝色冰雪长裙 |
 
 ---
 
-## 第二步：分镜提取原则
+## 原创角色处理方式
 
-1. **跨度要大**：分镜应覆盖故事的开头→发展→高潮→结尾
-2. **视觉优先**：选择最有画面感的瞬间，跳过纯对话/心理描写
-3. **动作明确**：每个分镜要有清晰的人物动作或状态
-4. **场景多样**：避免连续多个分镜都在同一场景
+非知名IP的原创角色，需要详细描述外貌：
 
----
+**必须包含的特征维度**：
+- 性别年龄：male/female, young/adult/elderly
+- 发型发色：如 long straight black hair, short messy brown hair
+- 眼睛：颜色和形状，如 blue eyes, narrow brown eyes
+- 脸型：如 oval face, round face, sharp jawline
+- 体型：如 slim, athletic, muscular, petite
+- 肤色：如 fair skin, tan skin, dark skin
 
-## 第三步：提示词组装规范
-
-positive 提示词必须按以下顺序组装：
-
-```
-[质量词], [风格词], [人数], [角色特征-照抄档案], [动作], [表情], [场景环境], [时间光线], [镜头构图]
-```
-
-示例：
-```
-masterpiece, best quality, anime style, 1girl, long black hair, blue eyes, fair skin, school uniform with red ribbon, running, happy smile, cherry blossom park, sunset, golden hour lighting, medium shot, dynamic angle
-```
+**禁止使用的模糊词汇**：
+❌ 美丽的、帅气的、可爱的、迷人的、好看的
+✅ 用具体特征替代：big eyes, small nose, defined cheekbones
 
 ---
 
-## 输出格式（严格 JSON）
+## 场景连贯性规则
+
+### 色调一致性
+- 同一场景的多个分镜应保持相似的色调
+- 白天场景：warm colors, natural lighting
+- 夜晚场景：cool colors, dramatic lighting
+
+### 构图变化
+分镜之间的镜头应有变化，避免单调：
+- 建立镜头：wide shot
+- 人物镜头：medium shot
+- 情感镜头：close-up
+- 细节镜头：extreme close-up
+
+---
+
+## 输出格式（严格JSON）
 
 ```json
 {{
@@ -126,37 +230,40 @@ masterpiece, best quality, anime style, 1girl, long black hair, blue eyes, fair 
     {{
       "name": "角色中文名",
       "id": "char_01",
-      "gender": "female",
-      "fixed_appearance": "long straight black hair, blue eyes, oval face, fair skin, slim, young woman in 20s",
-      "default_outfit": "white school uniform, red ribbon, black pleated skirt",
-      "full_tags": "long straight black hair, blue eyes, oval face, fair skin, slim body, white school uniform, red ribbon, black pleated skirt"
+      "is_known_ip": true,
+      "ip_source": "Marvel / DC Comics / naruto series / one piece / original 等",
+      "character_tag": "知名角色必填：English Name, IP Source（原创角色留空字符串）",
+      "gender": "male/female",
+      "iconic_features": "标志性外貌特征（英文）",
+      "default_outfit": "标志性/默认服装（英文）",
+      "full_tags": "完整标签 = character_tag + iconic_features + default_outfit"
     }}
   ],
   "global_style": {{
     "quality": "masterpiece, best quality, highly detailed",
     "art_style": "{style}",
-    "negative": "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, blurry, deformed, ugly, duplicate, extra limbs, cloned face, disfigured, mutated hands, poorly drawn hands, poorly drawn face, mutation, extra fingers, fused fingers, too many fingers, long neck, malformed limbs"
+    "negative": "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, blurry, deformed, ugly, duplicate, extra limbs, cloned face, disfigured, malformed limbs, fused fingers, too many fingers, long neck, poorly drawn hands, poorly drawn face, mutation, mutated"
   }},
   "prompts": [
     {{
       "index": 1,
-      "title": "简短中文标题(4-8字)",
-      "story_position": "opening/development/climax/ending",
-      "description": "中文场景描述(50-100字)，说明画面内容、人物状态、环境氛围",
+      "title": "简短中文标题（4-8字）",
+      "story_position": "opening / development / climax / ending",
+      "description": "中文场景描述（50-100字），包含画面内容、人物状态、环境氛围",
       "characters_present": ["char_01"],
       "scene": {{
-        "location": "具体地点英文，如 modern classroom, rainy street at night",
-        "time_of_day": "时间，如 morning, sunset, midnight",
-        "weather_lighting": "光线氛围，如 soft natural light, dramatic shadows, neon lights"
+        "location": "具体地点（英文），如 modern city street, dark forest at night",
+        "time_of_day": "时间，如 sunset, midnight, early morning",
+        "weather_lighting": "光线/天气/氛围，如 dramatic lighting, soft sunlight, rainy"
       }},
-      "action": "具体动作英文，如 sitting by window, running through crowd",
-      "emotion": "表情情绪英文，如 gentle smile, tears in eyes, determined look",
+      "action": "具体动作（英文），如 running, sitting on bench, fighting stance",
+      "emotion": "表情情绪（英文），如 determined expression, gentle smile, angry",
       "camera": {{
-        "shot": "wide shot / medium shot / close-up / extreme close-up",
-        "angle": "eye level / low angle / high angle / bird eye view"
+        "shot": "镜头类型：wide shot / medium shot / close-up / extreme close-up",
+        "angle": "拍摄角度：eye level / low angle / high angle / dutch angle"
       }},
-      "positive": "组装好的完整英文提示词(按上述顺序，80-120词)",
-      "negative": "使用 global_style.negative，如有场景特殊需求可追加"
+      "positive": "完整英文提示词（按下方组装规则，80-150词）",
+      "negative": "负面提示词（可使用global_style.negative或针对场景调整）"
     }}
   ]
 }}
@@ -164,15 +271,35 @@ masterpiece, best quality, anime style, 1girl, long black hair, blue eyes, fair 
 
 ---
 
+## Positive 提示词组装规则
+
+按以下顺序组装，用英文逗号分隔：
+
+```
+[quality] + [art_style] + [人数] + [角色full_tags] + [action] + [emotion] + [location] + [time] + [lighting] + [shot] + [angle]
+```
+
+### 知名角色示例
+
+**场景**：蜘蛛侠在纽约楼顶
+
+```
+masterpiece, best quality, highly detailed, comic style, 1boy, Spider-Man, Peter Parker, Marvel, athletic build, red and blue spider suit, web pattern, white eye lenses on mask, crouching on rooftop edge, determined, new york city skyline, night time, city lights below, moonlight, dynamic pose, low angle shot
+```
+
+---
+
 ## 关键规则（必须遵守）
 
-1. **角色标签锁死**：同一角色在所有分镜的 positive 中，外貌描述部分必须【完全相同】，直接复制 full_tags
-2. **服装变化处理**：如果剧情需要换装，在 action 中说明新服装，但 full_tags 中的外貌特征（发型、眼睛、脸型、肤色、体型）保持不变
-3. **数量严格**：必须恰好输出 {target_count} 个分镜
-4. **禁止抽象词**：beautiful, handsome, cute, attractive 等词禁止出现在 positive 中
-5. **英文提示词**：positive 和 negative 必须是纯英文
+1. **知名角色必须识别**：不要把超人写成"穿蓝衣服的黑发男人"，要用 "Superman, DC Comics"
+2. **character_tag 是关键**：知名角色的 character_tag 必须包含英文名和IP来源
+3. **full_tags 保持一致**：同一角色在所有分镜中的 full_tags 必须完全相同
+4. **分镜跨度要大**：覆盖故事的开头、发展、高潮、结尾
+5. **数量严格**：必须恰好输出 {target_count} 个分镜
+6. **纯英文提示词**：positive 和 negative 必须是纯英文
+7. **具体化描述**：禁止使用"美丽"、"帅气"等抽象词
 
-请直接输出 JSON，不要有任何其他内容。'''
+请直接输出符合格式的 JSON，不要有任何其他内容。'''
     },
     "character_multiview": {
         "name": "人物多视角 - 增强版",

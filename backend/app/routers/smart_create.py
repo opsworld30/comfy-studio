@@ -13,7 +13,8 @@ from ..database import get_db
 from ..models import SmartCreateTask, UserSettings, AIPromptTemplate
 from ..services.smart_create_executor import smart_create_executor
 from ..services.prompt_processor import prompt_processor
-from .ai_templates import SYSTEM_TEMPLATES
+from ..services.export_service import ExportService, ExportOptions
+from .ai_templates import SYSTEM_TEMPLATES, STYLE_MAPPING, get_style_description, list_styles
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,23 @@ class ExecuteTaskRequest(BaseModel):
     images_per_prompt: int = 1
     use_fixed_seed: bool = False
     save_to_gallery: bool = True
+
+
+class ExportRequest(BaseModel):
+    """导出请求"""
+    format: str = "zip"  # "zip" | "folder"
+    include_prompts: bool = True
+    include_metadata: bool = True
+    naming: str = "index"  # "index" | "title" | "both"
+    add_watermark: bool = False
+    watermark_text: str = ""
+
+
+class CharacterSheetRequest(BaseModel):
+    """角色设定图请求"""
+    character: dict
+    views: int = 4  # 4 或 8
+    style: str = "anime"
 
 
 class TaskResponse(BaseModel):
@@ -307,15 +325,6 @@ TEMPLATE_PROMPTS = {
     TemplateType.COMIC_SERIES: COMIC_SERIES_PROMPT,
 }
 
-STYLE_MAPPING = {
-    "realistic": "photorealistic, highly detailed, 8k",
-    "anime": "anime style, vibrant colors, detailed",
-    "cyberpunk": "cyberpunk style, neon lights, futuristic",
-    "fantasy": "fantasy art, epic, magical atmosphere",
-    "watercolor": "watercolor painting style, soft colors",
-    "comic": "comic book style, bold lines, dynamic",
-}
-
 
 # ============ 辅助函数 ============
 
@@ -506,6 +515,12 @@ async def get_templates():
     }
 
 
+@router.get("/styles")
+async def get_styles():
+    """获取可用的画面风格列表"""
+    return {"styles": list_styles()}
+
+
 @router.post("/analyze")
 async def analyze_content(
     request: AnalyzeRequest,
@@ -540,7 +555,7 @@ async def analyze_content(
         else:
             target_count = 12
 
-    style_desc = STYLE_MAPPING.get(request.style, request.style)
+    style_desc = get_style_description(request.style)
 
     # 构建提示词（使用 replace 避免 JSON 中的花括号与 format 冲突）
     prompt = template_prompt.replace("{content}", request.input_content)
@@ -572,6 +587,79 @@ async def analyze_content(
     except Exception as e:
         logger.error(f"AI 分析失败: {e}")
         raise HTTPException(status_code=500, detail=f"AI 分析失败: {str(e)}")
+
+
+@router.post("/generate-character-sheet")
+async def generate_character_sheet(
+    request: CharacterSheetRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    生成角色设定图（多视角）
+    用于两阶段生成：先确认角色外观，再生成分镜
+    """
+    character = request.character
+    style_desc = get_style_description(request.style)
+
+    # 构建视角列表
+    if request.views == 8:
+        views = [
+            ("正面", "front view, looking at viewer"),
+            ("右前45°", "three-quarter view from right, looking at viewer"),
+            ("右侧", "right side view, profile"),
+            ("右后45°", "three-quarter back view from right"),
+            ("背面", "back view, from behind"),
+            ("左后45°", "three-quarter back view from left"),
+            ("左侧", "left side view, profile"),
+            ("左前45°", "three-quarter view from left, looking at viewer"),
+        ]
+    else:
+        views = [
+            ("正面", "front view, looking at viewer"),
+            ("右侧", "right side view, profile"),
+            ("背面", "back view, from behind"),
+            ("左侧", "left side view, profile"),
+        ]
+
+    # 获取角色标签
+    full_tags = character.get("full_tags", "")
+    is_known_ip = character.get("is_known_ip", False)
+    character_tag = character.get("character_tag", "")
+
+    # 知名角色加权
+    if is_known_ip and character_tag:
+        main_name = character_tag.split(",")[0].strip()
+        full_tags = full_tags.replace(main_name, f"({main_name}:1.3)")
+
+    # 构建提示词
+    prompts = []
+    for i, (cn_name, en_view) in enumerate(views):
+        positive = (
+            f"masterpiece, best quality, character reference sheet, {style_desc}, "
+            f"full body, {full_tags}, {en_view}, "
+            f"standing pose, simple background, white background, "
+            f"solo, high quality, detailed"
+        )
+
+        negative = (
+            "multiple views in one image, split screen, collage, "
+            "lowres, bad anatomy, bad hands, worst quality, low quality, "
+            "blurry, cropped, extra limbs, deformed, text, watermark"
+        )
+
+        prompts.append({
+            "index": i + 1,
+            "title": f"{character.get('name', '角色')} - {cn_name}",
+            "view": en_view,
+            "positive": positive,
+            "negative": negative,
+        })
+
+    return {
+        "character": character,
+        "prompts": prompts,
+        "message": "请生成角色设定图，确认后可用于后续分镜生成"
+    }
 
 
 @router.post("", response_model=TaskResponse)
@@ -840,6 +928,54 @@ async def retry_task(
     background_tasks.add_task(smart_create_executor.retry_failed_jobs, task_id)
 
     return {"success": True, "message": f"开始重试 {len(failed_jobs)} 个失败的分镜"}
+
+
+@router.post("/{task_id}/export")
+async def export_task_results(
+    task_id: int,
+    request: ExportRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """导出任务结果"""
+    result = await db.execute(
+        select(SmartCreateTask).where(SmartCreateTask.id == task_id)
+    )
+    task = result.scalar_one_or_none()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    if task.status != "completed" and task.completed_count == 0:
+        raise HTTPException(status_code=400, detail="任务未完成或没有生成的图片")
+
+    # 导出
+    service = ExportService()
+    options = ExportOptions(
+        format=request.format,
+        include_prompts=request.include_prompts,
+        include_metadata=request.include_metadata,
+        naming=request.naming,
+        add_watermark=request.add_watermark,
+        watermark_text=request.watermark_text,
+    )
+
+    characters = task.config.get("characters", []) if task.config else []
+
+    export_result = await service.export_task(
+        task_id=task_id,
+        task_name=task.name,
+        images=task.result_images or [],
+        characters=characters,
+        options=options
+    )
+
+    if not export_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=export_result.get("error", "导出失败")
+        )
+
+    return export_result
 
 
 @router.delete("/{task_id}")
