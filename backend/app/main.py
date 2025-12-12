@@ -28,6 +28,7 @@ from .services.cleanup import cleanup_service
 from .services.backup import backup_service
 from .services.auto_migrate import auto_migrate_service
 from .services.smart_create_executor import smart_create_executor
+from .services.smart_create_progress import smart_create_progress_manager
 from .services.task_queue import start_all_queues, stop_all_queues
 from .logging_config import setup_logging, get_logger
 
@@ -216,3 +217,43 @@ async def websocket_endpoint(websocket: WebSocket):
             pass
     finally:
         manager.disconnect(websocket)
+
+
+@app.websocket("/ws/smart-create")
+async def smart_create_websocket(websocket: WebSocket):
+    """智能创作任务进度 WebSocket 端点"""
+    await websocket.accept()
+
+    # 默认订阅全局更新
+    await smart_create_progress_manager.subscribe(websocket)
+
+    try:
+        while True:
+            # 接收客户端消息
+            data = await websocket.receive_json()
+
+            # 处理订阅/取消订阅请求
+            action = data.get("action")
+            task_id = data.get("task_id")
+
+            if action == "subscribe" and task_id:
+                await smart_create_progress_manager.subscribe(websocket, task_id)
+                await websocket.send_json({
+                    "type": "subscribed",
+                    "task_id": task_id
+                })
+            elif action == "unsubscribe" and task_id:
+                await smart_create_progress_manager.unsubscribe(websocket, task_id)
+                await websocket.send_json({
+                    "type": "unsubscribed",
+                    "task_id": task_id
+                })
+            elif action == "ping":
+                await websocket.send_json({"type": "pong"})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"SmartCreate WebSocket error: {e}")
+    finally:
+        await smart_create_progress_manager.unsubscribe(websocket)

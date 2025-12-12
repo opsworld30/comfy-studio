@@ -12,6 +12,7 @@ from sqlalchemy import select, desc
 from ..database import get_db
 from ..models import SmartCreateTask, UserSettings, AIPromptTemplate
 from ..services.smart_create_executor import smart_create_executor
+from ..services.prompt_processor import prompt_processor
 from .ai_templates import SYSTEM_TEMPLATES
 
 logger = logging.getLogger(__name__)
@@ -407,39 +408,47 @@ async def call_ai_api(
     return data["choices"][0]["message"]["content"]
 
 
-def parse_ai_response(content: str) -> list[dict]:
-    """解析 AI 响应"""
+def parse_ai_response(content: str) -> dict:
+    """解析 AI 响应，返回完整的结构化数据"""
     original_content = content  # 保存原始内容用于调试
-    
+
     try:
-        # 清理 markdown 代码块
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0]
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0]
-        
-        content = content.strip()
-        
-        # 尝试解析 JSON
-        result = json.loads(content)
-        return result.get("prompts", [])
+        # 使用 PromptProcessor 解析
+        result = prompt_processor.process_ai_response(content)
+        return result
     except json.JSONDecodeError as e:
         # JSON 解析失败，记录详细信息
         logger.error(f"JSON 解析失败: {e}")
-        logger.error(f"尝试解析的内容（前500字符）: {content[:500]}")
         logger.error(f"原始 AI 响应（前500字符）: {original_content[:500]}")
-        
-        # 尝试修复常见问题：未转义的换行符
+
+        # 尝试旧的解析方式作为兜底
         try:
+            # 清理 markdown 代码块
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+
+            content = content.strip()
+
             # 移除控制字符
             import re
             cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', content)
-            result = json.loads(cleaned)
-            logger.info("通过清理控制字符成功解析")
-            return result.get("prompts", [])
+            data = json.loads(cleaned)
+
+            # 兼容旧格式
+            prompts = data.get("prompts", [])
+            characters = data.get("characters", [])
+            global_style = data.get("global_style", {})
+
+            return {
+                "prompts": prompts,
+                "characters": characters,
+                "global_style": global_style
+            }
         except Exception:
             pass
-        
+
         # 如果还是失败，抛出原始错误
         raise
 
@@ -502,24 +511,24 @@ async def analyze_content(
     request: AnalyzeRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """AI 分析内容并生成提示词 - 单次调用保持上下文连贯"""
+    """AI 分析内容并生成提示词 - 返回角色信息和结构化提示词"""
     # 获取 AI 设置
     ai_settings = await get_ai_settings(db)
-    
+
     ai_enabled = ai_settings.get('enabled', False)
     api_key = ai_settings.get('api_key', '')
     if not ai_enabled or not api_key:
         raise HTTPException(status_code=400, detail="AI 功能未启用，请先在设置中配置 AI API")
-    
+
     # 获取模板提示词（优先用户自定义）
     template_prompt = await get_template_prompt(request.template_type, db)
     if not template_prompt:
         raise HTTPException(status_code=400, detail=f"不支持的模板类型: {request.template_type}")
-    
+
     # 处理目标数量
     target_count = request.target_count
     content_len = len(request.input_content)
-    
+
     if target_count == 0:
         # 根据内容长度自动估算合理的分镜数量
         if content_len < 500:
@@ -530,22 +539,33 @@ async def analyze_content(
             target_count = 8
         else:
             target_count = 12
-    
+
     style_desc = STYLE_MAPPING.get(request.style, request.style)
-    
+
     # 构建提示词（使用 replace 避免 JSON 中的花括号与 format 冲突）
     prompt = template_prompt.replace("{content}", request.input_content)
     prompt = prompt.replace("{style}", style_desc)
     prompt = prompt.replace("{target_count}", str(target_count))
-    
+
     try:
         logger.info(f"开始 AI 分析: template={request.template_type}, target_count={target_count}, content_len={content_len}")
         response = await call_ai_api(prompt, ai_settings)
         logger.info(f"AI 响应长度: {len(response)} 字符")
-        prompts = parse_ai_response(response)
-        logger.info(f"解析出 {len(prompts)} 个分镜")
-        
-        return {"prompts": prompts}
+
+        # 解析并处理响应
+        result = parse_ai_response(response)
+
+        prompts = result.get("prompts", [])
+        characters = result.get("characters", [])
+        global_style = result.get("global_style", {})
+
+        logger.info(f"解析出 {len(prompts)} 个分镜, {len(characters)} 个角色")
+
+        return {
+            "prompts": prompts,
+            "characters": characters,
+            "global_style": global_style
+        }
     except json.JSONDecodeError as e:
         logger.error(f"AI 响应解析失败: {e}")
         raise HTTPException(status_code=500, detail=f"AI 响应解析失败: {str(e)}")

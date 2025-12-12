@@ -6,7 +6,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # 系统提示词
-SYSTEM_PROMPTS = {
+SYSTEM_PROMPTS = { 
     "optimize": """你是一个专业的 Stable Diffusion 提示词优化专家。
 用户会给你一个提示词，请优化它使其更加详细、专业，能生成更高质量的图片。
 规则：

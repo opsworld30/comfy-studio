@@ -58,12 +58,14 @@ class TemplateResponse(BaseModel):
 
 SYSTEM_TEMPLATES = {
     "novel_storyboard": {
-        "name": "小说分镜 - 默认模板",
-        "description": "适用于小说文本转分镜画面，支持人物一致性",
-        "prompt_template": '''你是一个专业的小说分镜分析师和AI绘画提示词专家。
+        "name": "小说分镜 - 默认模版",
+        "description": "适用于小说文本转分镜画面，支持角色锁定和结构化输出",
+        "prompt_template": '''你是专业的小说分镜分析师和AI绘画提示词专家。
 
-## 任务
-分析以下小说文本，将其拆分为 {target_count} 个关键分镜场景，并为每个场景生成高质量的AI绘画提示词。
+## 核心任务
+1. 提取并固定所有角色的视觉特征
+2. 将小说拆分为 {target_count} 个关键分镜
+3. 为每个分镜生成高质量、一致的 AI 绘画提示词
 
 ## 小说内容
 {content}
@@ -71,53 +73,114 @@ SYSTEM_TEMPLATES = {
 ## 画面风格
 {style}
 
-## 核心要求：人物一致性
-**重要**：首先识别小说中的主要人物，为每个人物建立固定的外貌描述标签，在所有分镜中保持一致。
+---
 
-人物特征模板示例：
-- 主角：[hair color] hair, [eye color] eyes, [age] years old, [body type], [clothing description]
-- 配角：同样格式的固定描述
+## 第一步：角色档案建立
 
-## 分析要求
-1. **场景拆分**：通读全文，识别故事的关键转折点、情感高潮、重要场景变化
-2. **均匀分布**：确保分镜覆盖故事的开头、发展、高潮、结尾，跨度要大
-3. **画面提炼**：为每个分镜提取最具视觉冲击力的瞬间
-4. **人物锁定**：同一人物在不同分镜中使用完全相同的外貌描述词
+分析小说中的角色，为每个角色建立【固定不变】的视觉档案。
 
-## 输出格式
-请严格按以下 JSON 格式输出，不要有任何其他内容：
+角色描述必须具体化，禁止使用的词汇：
+❌ 美丽的、帅气的、可爱的、迷人的（太抽象）
+✅ 改为具体特征：oval face, sharp jawline, big eyes, small nose
+
+必须包含的特征维度：
+- hair: 发型+发色+长度（如 long straight black hair, short messy brown hair）
+- eyes: 眼睛颜色+形状（如 blue eyes, narrow brown eyes）
+- face: 脸型特征（如 oval face, round face with freckles）
+- body: 体型（如 slim, athletic, petite, tall and muscular）
+- skin: 肤色（如 fair skin, tan skin, pale skin）
+- age: 年龄外观（如 young woman in 20s, middle-aged man）
+- outfit: 默认服装（如 white blouse and black skirt, casual hoodie and jeans）
+
+---
+
+## 第二步：分镜提取原则
+
+1. **跨度要大**：分镜应覆盖故事的开头→发展→高潮→结尾
+2. **视觉优先**：选择最有画面感的瞬间，跳过纯对话/心理描写
+3. **动作明确**：每个分镜要有清晰的人物动作或状态
+4. **场景多样**：避免连续多个分镜都在同一场景
+
+---
+
+## 第三步：提示词组装规范
+
+positive 提示词必须按以下顺序组装：
+
+```
+[质量词], [风格词], [人数], [角色特征-照抄档案], [动作], [表情], [场景环境], [时间光线], [镜头构图]
+```
+
+示例：
+```
+masterpiece, best quality, anime style, 1girl, long black hair, blue eyes, fair skin, school uniform with red ribbon, running, happy smile, cherry blossom park, sunset, golden hour lighting, medium shot, dynamic angle
+```
+
+---
+
+## 输出格式（严格 JSON）
+
+```json
 {{
   "characters": [
     {{
-      "name": "人物名称",
-      "appearance": "固定的英文外貌描述，包含发色、眼色、年龄、体型、标志性服装"
+      "name": "角色中文名",
+      "id": "char_01",
+      "gender": "female",
+      "fixed_appearance": "long straight black hair, blue eyes, oval face, fair skin, slim, young woman in 20s",
+      "default_outfit": "white school uniform, red ribbon, black pleated skirt",
+      "full_tags": "long straight black hair, blue eyes, oval face, fair skin, slim body, white school uniform, red ribbon, black pleated skirt"
     }}
   ],
+  "global_style": {{
+    "quality": "masterpiece, best quality, highly detailed",
+    "art_style": "{style}",
+    "negative": "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, blurry, deformed, ugly, duplicate, extra limbs, cloned face, disfigured, mutated hands, poorly drawn hands, poorly drawn face, mutation, extra fingers, fused fingers, too many fingers, long neck, malformed limbs"
+  }},
   "prompts": [
     {{
       "index": 1,
-      "title": "简短的分镜标题（4-8字中文）",
-      "description": "场景描述（中文，50-100字，描述画面内容、人物动作、环境氛围）",
-      "positive": "masterpiece, best quality, {style}, [场景环境], [人物外貌-使用上面定义的固定描述], [动作姿态], [表情情绪], [光线氛围], [镜头角度], [画面构图]",
-      "negative": "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, deformed, ugly, duplicate, morbid, mutilated"
+      "title": "简短中文标题(4-8字)",
+      "story_position": "opening/development/climax/ending",
+      "description": "中文场景描述(50-100字)，说明画面内容、人物状态、环境氛围",
+      "characters_present": ["char_01"],
+      "scene": {{
+        "location": "具体地点英文，如 modern classroom, rainy street at night",
+        "time_of_day": "时间，如 morning, sunset, midnight",
+        "weather_lighting": "光线氛围，如 soft natural light, dramatic shadows, neon lights"
+      }},
+      "action": "具体动作英文，如 sitting by window, running through crowd",
+      "emotion": "表情情绪英文，如 gentle smile, tears in eyes, determined look",
+      "camera": {{
+        "shot": "wide shot / medium shot / close-up / extreme close-up",
+        "angle": "eye level / low angle / high angle / bird eye view"
+      }},
+      "positive": "组装好的完整英文提示词(按上述顺序，80-120词)",
+      "negative": "使用 global_style.negative，如有场景特殊需求可追加"
     }}
   ]
 }}
+```
 
-## 重要规则
-1. **人物一致性最重要**：同一人物的外貌描述在所有分镜中必须完全一致
-2. **分镜跨度要大**：每个分镜应代表故事的不同阶段
-3. **数量严格遵守**：必须输出恰好 {target_count} 个分镜
-4. **提示词质量**：正向提示词要详细具体，80-150个英文单词
-5. **英文提示词**：positive 必须是纯英文'''
+---
+
+## 关键规则（必须遵守）
+
+1. **角色标签锁死**：同一角色在所有分镜的 positive 中，外貌描述部分必须【完全相同】，直接复制 full_tags
+2. **服装变化处理**：如果剧情需要换装，在 action 中说明新服装，但 full_tags 中的外貌特征（发型、眼睛、脸型、肤色、体型）保持不变
+3. **数量严格**：必须恰好输出 {target_count} 个分镜
+4. **禁止抽象词**：beautiful, handsome, cute, attractive 等词禁止出现在 positive 中
+5. **英文提示词**：positive 和 negative 必须是纯英文
+
+请直接输出 JSON，不要有任何其他内容。'''
     },
     "character_multiview": {
-        "name": "人物多视角 - 默认模板",
-        "description": "生成人物的多角度参考图，保持一致性",
-        "prompt_template": '''你是一个专业的角色设计师和AI绘画提示词专家。
+        "name": "人物多视角 - 增强版",
+        "description": "生成角色多角度参考图，保持完美一致性",
+        "prompt_template": '''你是专业的角色设计师和 AI 绘画提示词专家。
 
 ## 任务
-根据以下人物描述，生成 {target_count} 个不同视角的角色参考图提示词。
+根据人物描述，生成 {target_count} 个不同视角的角色设定图提示词。
 
 ## 人物描述
 {content}
@@ -125,30 +188,67 @@ SYSTEM_TEMPLATES = {
 ## 画面风格
 {style}
 
-## 视角安排
-- 8视角：正面、右前45度、右侧90度、右后135度、背面、左后135度、左侧90度、左前45度
-- 4视角：正面、右侧90度、背面、左侧90度
-- 其他数量：均匀分布在360度范围内
+## 视角分配规则
+- 4 视角：正面、右侧、背面、左侧
+- 8 视角：正面、右前45°、右侧、右后45°、背面、左后45°、左侧、左前45°
 
-## 输出格式
-请严格按以下 JSON 格式输出：
+---
+
+## 角色档案建立
+
+首先将人物描述转化为具体的视觉标签：
+
+必须包含的特征维度：
+- hair: 发型+发色+长度（如 long straight black hair）
+- eyes: 眼睛颜色+形状（如 blue eyes, narrow eyes）
+- face: 脸型特征（如 oval face, sharp jawline）
+- body: 体型（如 slim, athletic, petite）
+- skin: 肤色（如 fair skin, tan skin）
+- age: 年龄外观（如 young woman in 20s）
+- outfit: 服装详细描述
+
+---
+
+## 输出格式（严格 JSON）
+
+```json
 {{
+  "character": {{
+    "name": "角色名",
+    "gender": "male/female",
+    "fixed_appearance": "完整外貌描述（发型发色、眼睛、脸型、肤色、体型、年龄）",
+    "outfit": "服装描述",
+    "full_tags": "合并的完整标签，用于所有视角"
+  }},
+  "global_style": {{
+    "quality": "masterpiece, best quality, highly detailed",
+    "art_style": "{style}",
+    "negative": "multiple views, split screen, lowres, bad anatomy, worst quality, low quality, blurry, cropped, deformed"
+  }},
   "prompts": [
     {{
       "index": 1,
-      "title": "视角名称（如：正面视角）",
-      "description": "该视角下的人物描述（中文）",
-      "positive": "masterpiece, best quality, character reference sheet, {style}, [人物完整描述：发型发色、五官特征、身材体型、服装配饰、姿态表情], [视角描述：front view/side view/back view等], full body, simple background, white background, standing pose",
-      "negative": "lowres, bad anatomy, bad hands, text, error, missing fingers, cropped, worst quality, low quality, blurry, deformed, multiple views in one image"
+      "title": "正面视角",
+      "view_angle": "front view",
+      "description": "该视角的中文说明",
+      "positive": "masterpiece, best quality, character reference sheet, {style}, full body, [full_tags], front view, standing pose, simple background, white background, solo, looking at viewer",
+      "negative": "multiple views, split image, lowres, bad anatomy, worst quality, low quality, blurry, cropped"
     }}
   ]
 }}
+```
 
-## 重要规则
-1. **特征一致**：所有视角必须保持人物特征完全一致
-2. **视角明确**：每个提示词必须包含明确的视角描述
-3. **全身展示**：使用 full body 确保展示完整人物
-4. **简洁背景**：使用纯色背景便于后期使用'''
+---
+
+## 关键规则
+
+1. **标签完全一致**：所有视角的 full_tags（外貌+服装）必须完全相同，只有 view_angle 不同
+2. **使用 standing pose**：保持简洁的站姿
+3. **白色背景**：使用 white background 便于后期使用
+4. **确保 full body**：展示完整人物
+5. **禁止抽象词**：beautiful, handsome 等词禁止使用
+
+请直接输出 JSON。'''
     },
     "video_storyboard": {
         "name": "视频分镜 - 默认模板",
@@ -241,12 +341,12 @@ SYSTEM_TEMPLATES = {
 }}'''
     },
     "comic_series": {
-        "name": "连续漫画 - 默认模板",
-        "description": "根据剧情生成连续漫画页面",
-        "prompt_template": '''你是一个专业的漫画分镜师和AI绘画提示词专家。
+        "name": "连续漫画 - 增强版",
+        "description": "根据剧情生成连续漫画页面，角色高度一致",
+        "prompt_template": '''你是专业的漫画分镜师和AI绘画提示词专家。
 
 ## 任务
-根据以下剧情内容，生成 {target_count} 页连续漫画画面的AI绘画提示词。
+根据剧情内容，生成 {target_count} 页连续漫画画面的AI绘画提示词。
 
 ## 剧情内容
 {content}
@@ -254,33 +354,79 @@ SYSTEM_TEMPLATES = {
 ## 画面风格
 {style}
 
-## 核心要求：角色一致性
-**重要**：首先识别剧情中的主要角色，为每个角色建立固定的外貌描述，在所有页面中保持一致。
+---
 
-## 输出格式
-请严格按以下 JSON 格式输出：
+## 第一步：角色档案建立（最重要！）
+
+识别剧情中的所有角色，为每个角色建立【固定不变】的视觉档案。
+
+角色描述必须具体化：
+- hair: 发型+发色+长度
+- eyes: 眼睛颜色+形状
+- face: 脸型特征
+- body: 体型
+- skin: 肤色
+- outfit: 标志性服装
+
+禁止使用：美丽的、帅气的、可爱的等抽象词
+
+---
+
+## 输出格式（严格 JSON）
+
+```json
 {{
   "characters": [
     {{
-      "name": "角色名称",
-      "appearance": "固定的英文外貌描述"
+      "name": "角色中文名",
+      "id": "char_01",
+      "gender": "female",
+      "fixed_appearance": "具体外貌描述",
+      "default_outfit": "默认服装",
+      "full_tags": "合并的完整标签"
     }}
   ],
+  "global_style": {{
+    "quality": "masterpiece, best quality, highly detailed",
+    "art_style": "manga style, comic art, {style}",
+    "negative": "lowres, bad anatomy, worst quality, low quality, blurry, realistic photo, 3d render, deformed"
+  }},
   "prompts": [
     {{
       "index": 1,
-      "title": "第X页 - 场景概述",
+      "title": "第1页 - 场景概述",
+      "story_position": "opening/development/climax/ending",
       "description": "该页漫画的内容描述（中文，包含画面内容和剧情推进）",
-      "positive": "masterpiece, best quality, manga style, comic art, {style}, [场景描述], [人物描述-使用固定外貌], [动作], [表情和情绪], dynamic composition, expressive, detailed lineart",
+      "characters_present": ["char_01"],
+      "scene": {{
+        "location": "场景地点英文",
+        "time_of_day": "时间",
+        "weather_lighting": "光线氛围"
+      }},
+      "action": "具体动作英文",
+      "emotion": "表情情绪英文，漫画要夸张表现",
+      "camera": {{
+        "shot": "wide shot / medium shot / close-up",
+        "angle": "eye level / low angle / high angle / dutch angle"
+      }},
+      "positive": "masterpiece, best quality, manga style, comic art, {style}, [角色full_tags], [动作], [夸张表情], [场景], dynamic composition, expressive, detailed lineart, screentone",
       "negative": "lowres, bad anatomy, worst quality, low quality, blurry, realistic photo, 3d render"
     }}
   ]
 }}
+```
 
-## 漫画要素
-1. **角色一致**：同一角色在所有页面中外貌必须一致
-2. **情节连贯**：确保页面之间剧情流畅衔接
-3. **表情丰富**：漫画强调人物表情和情绪表达'''
+---
+
+## 漫画特有规则
+
+1. **角色标签锁死**：同一角色在所有页面的外貌描述必须完全相同
+2. **表情夸张化**：漫画强调表情，使用 expressive, exaggerated expression 等
+3. **动态构图**：使用 dynamic composition, action lines, speed lines 增强视觉冲击
+4. **情节连贯**：确保页面之间剧情流畅衔接
+5. **数量严格**：必须恰好输出 {target_count} 个页面
+
+请直接输出 JSON。'''
     },
 }
 
