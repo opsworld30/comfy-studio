@@ -330,8 +330,9 @@ export function TaskDetailDialog({ open, onClose, task }: TaskDetailDialogProps)
                     {currentTask.result_images.map((img, index) => {
                       // img 可能是字符串或对象
                       const imagePath = typeof img === 'string' ? img : (img as { path?: string }).path || ''
-                      const fullImageUrl = comfyuiApi.getImageUrl(imagePath)
-                      const thumbnailUrl = comfyuiApi.getThumbnailUrl(imagePath, '', 'output', 256)
+                      const subfolder = typeof img === 'object' ? (img as { subfolder?: string }).subfolder || '' : ''
+                      const fullImageUrl = comfyuiApi.getImageUrl(imagePath, subfolder, 'output')
+                      const thumbnailUrl = comfyuiApi.getThumbnailUrl(imagePath, subfolder, 'output', 256)
                       
                       // 判断任务是否正在生成中
                       const isTaskGenerating = currentTask.status === 'generating' || currentTask.status === 'analyzing'
